@@ -58,6 +58,16 @@ MGMT_INTF_KEY_DNS1 = "dns-server-1"
 MGMT_INTF_KEY_DNS2 = "dns-server-2"
 MGMT_INTF_MODE_DHCP = "dhcp"
 MGMT_INTF_MODE_STATIC = "static"
+MGMT_INTF_KEY_IPV6 = "ipv6"
+MGMT_INTF_KEY_DEF_GW_V6 = "default-gateway-v6"
+MGMT_INTF_KEY_IPV6_LINK_LOCAL = "ipv6-linklocal"
+#IPv6 Macros
+DEFAULT_IPV6 = "::"
+#Ipv6 family
+AF_INET6 = 10
+#IPv6 scope macros
+SCOPE_IPV6_GLOBAL = 0
+SCOPE_IPV6_LINK_LOCAL = 253
 
 # Program control.
 exiting = False
@@ -133,6 +143,7 @@ def mgmt_intf_add_ip(mgmt_intf, ip_val, prefixlen):
         vlog.err("Unexpected error:" + str(sys.exc_info()[0]))
         return False
 
+    vlog.info("Configured IP %s/%s on Mgmt Interface %s"%(ip_val,prefixlen, mgmt_intf))
     return True
 
 # Function to remove statically configured IP and subnet mask.
@@ -177,6 +188,7 @@ def mgmt_intf_remove_ip(mgmt_intf, ip_val, prefixlen):
         vlog.err("Unexpected error:" + str(sys.exc_info()[0]))
         return False
 
+    vlog.info("Removed IP %s/%s on Mgmt Interface %s"%(ip_val,prefixlen, mgmt_intf))
     return True
 
 # Function to configure default gateway.
@@ -211,6 +223,7 @@ def mgmt_intf_add_def_gw(def_gw):
         vlog.err("Unexpected error:" + str(sys.exc_info()[0]))
         return False
 
+    vlog.info("Configured default gateway %s on Mgmt Interface"%def_gw)
     return True
 
 # Function to remove configured default gateway.
@@ -239,8 +252,11 @@ def mgmt_intf_remove_def_gw(def_gw):
         if def_gw == DEFAULT_IPV4:
             def_gw = cfg_gw
 
-        # Remove the default gateway.
-        ipr.route('delete', gateway=def_gw)
+        # If gateway available, then delete
+        if def_gw != DEFAULT_IPV4:
+            # Remove the default gateway.
+            ipr.route('delete', gateway=def_gw)
+
         ipr.close()
     except NetlinkError as e:
         vlog.err("Removing default gateway %s from mgmt interface failed with code %d"%(def_gw, e.code))
@@ -249,8 +265,7 @@ def mgmt_intf_remove_def_gw(def_gw):
         vlog.err("Unexpected error:" + str(sys.exc_info()[0]))
         return False
 
-    def_gw = DEFAULT_IPV4
-
+    vlog.info("Removed default gateway %s on Mgmt Interface"%def_gw)
     return True
 
 # Function to remove all the parameters that were configured statically from cache and OVSDB.
@@ -260,6 +275,7 @@ def mgmt_intf_clear_static_val(mgmt_intf):
     mgmt_intf_remove_ip(mgmt_intf, DEFAULT_IPV4, 0)
     mgmt_intf_remove_def_gw(DEFAULT_IPV4)
     mgmt_intf_clear_dns_conf()
+    vlog.info("Cleared all statically configured values on mgmt interface")
 
 # Update the OVSDB with the updated values.
 def mgmt_intf_clear_status_col(idl):
@@ -276,8 +292,9 @@ def mgmt_intf_clear_status_col(idl):
     setattr(ovs_rec, "mgmt_intf_status", data)
 
     status = txn.commit_block()
-    if status != "success":
-        vlog.err("Clearing status column from ovsdb failed")
+    if status != "success" and status != "unchanged":
+        vlog.err("Clearing status column from ovsdb failed with status %s"%(status))
+
         return False
 
     return True
@@ -360,23 +377,37 @@ def mgmt_intf_start_dhcp_client(idl, intf_val):
     else:
         mgmt_intf = intf_val
 
+    # Start IPv4 DHCP client.
     dhcp_str = "systemctl start dhclient@" + mgmt_intf + ".service"
     os.system(dhcp_str)
+    vlog.info("Started dhcp v4 client on interface " + mgmt_intf)
+
+    # Start IPv6 DHCP client.
+    dhcp_str = "systemctl start dhclient6@" + mgmt_intf + ".service"
+    os.system(dhcp_str)
+    vlog.info("Started dhcp v6 client on interface " + mgmt_intf)
 
     return True
 
-# Function to stop the DHCP client
+# Function to stop the DHCP client.
 def mgmt_intf_stop_dhcp_client(mgmt_intf):
 
-    # Check if the DHCP client is running
+    # Check if the DHCP client is running.
     dhcp_str = "systemctl status dhclient@" + mgmt_intf + ".service"
     status, output = commands.getstatusoutput(dhcp_str)
     if not status:
         if "running" in output:
-            # Stop the dhcp client
+            # No need to check for IPv6 status, as we start both and stop both together.
+            # Stop the IPv4 dhcp client.
             dhcp_str = "systemctl stop dhclient@" + mgmt_intf + ".service"
             os.system(dhcp_str)
-            vlog.info("Stopping dhcp client on interface " + mgmt_intf)
+            vlog.info("Stopped dhcp v4 client on interface " + mgmt_intf)
+
+            # Stop the IPv6 dhcp client.
+            dhcp_str = "systemctl stop dhclient6@" + mgmt_intf + ".service"
+            os.system(dhcp_str)
+            vlog.info("Stopped dhcp v6 client on interface " + mgmt_intf)
+
             sleep(DHCP_RESTART_WAIT_TIME)
 
 # Function to process the mode transition from dhcp to static
@@ -403,6 +434,168 @@ def mgmt_intf_dhcp_mode_handler(idl, mgmt_intf):
 
     # Clear status column
     mgmt_intf_clear_status_col(idl)
+
+# Function to add IPv6 and prefix
+def mgmt_intf_add_ipv6(mgmt_intf, ipv6_addr, ipv6_prefix ):
+
+    # Input validation
+    if ipv6_addr == DEFAULT_IPV6 or ipv6_prefix == 0:
+        vlog.err("IPv6: Trying to add NULL IP")
+        return False
+
+    try:
+        ipr = IPRoute()
+
+        # lookup interface by name
+        dev = ipr.link_lookup(ifname=mgmt_intf)[0]
+        # Get the configured IP and see if the IP is present.
+        ip_list = [x.get_attr('IFA_ADDRESS') for x in ipr.get_addr(index=dev,family = AF_INET6,scope = SCOPE_IPV6_GLOBAL)]
+        prefix_list = [x['prefixlen'] for x in ipr.get_addr(index=dev,family = AF_INET6,scope = SCOPE_IPV6_GLOBAL)]
+        ind = 0
+        for ip in ip_list:
+            if ip == ipv6_addr and ipv6_prefix == prefix_list[ind]:
+                ipr.close()
+                return True
+            ind = ind +1
+
+        # Add IP to the interface
+        ipr.addr('add', dev, address=ipv6_addr, mask=ipv6_prefix)
+
+        # Get the configured IP and see if the IP is present.
+        ip_list = [x.get_attr('IFA_ADDRESS') for x in ipr.get_addr(index=dev,family = AF_INET6,scope = SCOPE_IPV6_GLOBAL)]
+        if ip_list:
+            ip = ip_list[0]
+        prefix_list = [x['prefixlen'] for x in ipr.get_addr(index=dev,family = AF_INET6,scope = SCOPE_IPV6_GLOBAL)]
+        if prefix_list:
+            prefix = prefix_list[0]
+
+        ipr.close()
+
+        # If the IP configs are updated properly then update the DB status column
+        if ip == ipv6_addr and ipv6_prefix == prefix:
+            vlog.info("Configure static Ipv6 address: success")
+            return True
+        else:
+            vlog.err("Configure static Ipv6 address: failed")
+            return False
+
+    except NetlinkError as e:
+        vlog.err("Adding Ipv6 %s/%s on Mgmt Interface %s failed with error code=%d",ipv6_addr, ipv6_prefix, mgmt_intf, e.code )
+        return False
+    except:
+        vlog.err("Unexpected error:" + str(sys.exc_info()[0]))
+        return False
+
+    return True
+
+# Function to remove statically configured IP and subnet mask
+def mgmt_intf_remove_ipv6(mgmt_intf):
+
+    try:
+        ipr = IPRoute()
+        # lookup interface by name
+        dev = ipr.link_lookup(ifname=mgmt_intf)[0]
+        # Get the configured IP and see if the IP we are trying to remove is present.
+        ip_list = [x.get_attr('IFA_ADDRESS') for x in ipr.get_addr(index=dev,family = AF_INET6,scope = SCOPE_IPV6_GLOBAL)]
+        prefix_list = [x['prefixlen'] for x in ipr.get_addr(index=dev,family = AF_INET6,scope = SCOPE_IPV6_GLOBAL)]
+        ind = 0
+        for ip in ip_list:
+            ipr.addr('delete', dev, address=ip, mask=prefix_list[ind])
+            ind = ind +1
+
+        ipr.close()
+
+    except NetlinkError as e:
+        vlog.err("Remove Ipv6 Mgmt Interface %s failed with error code=%d", mgmt_intf, e.code )
+        return False
+    except:
+        vlog.err("Unexpected error:" + str(sys.exc_info()[0]))
+        return False
+
+    return True
+
+# Function to configure default gateway
+def mgmt_intf_add_def_gw_ipv6(def_gw_ipv6):
+
+    cfg_gw_ipv6 = DEFAULT_IPV6
+    # Input validation
+    if def_gw_ipv6 == DEFAULT_IPV6:
+        return False
+
+    try:
+        ipr = IPRoute()
+        # Get the existing default routes if any
+        if ipr.get_default_routes(family=AF_INET6):
+            gw_list = [x.get_attr('RTA_GATEWAY') for x in ipr.get_default_routes(family=AF_INET6)]
+            if gw_list:
+                cfg_gw_ipv6 = gw_list[0]
+                # If default route is already present then nothing to do
+        if cfg_gw_ipv6 == def_gw_ipv6:
+            ipr.close()
+            return True
+
+        # Configure the default gateway
+        ipr.route('add', gateway = def_gw_ipv6,family = AF_INET6)
+
+        if ipr.get_default_routes(family=AF_INET6):
+            gw_list = [x.get_attr('RTA_GATEWAY') for x in ipr.get_default_routes(family=AF_INET6)]
+            if gw_list:
+                cfg_gw_ipv6 = gw_list[0]
+
+        ipr.close()
+        # If default route is properly configured then update the DB status column
+        if cfg_gw_ipv6 == def_gw_ipv6:
+            vlog.info("Configure default gateway IPv6: success")
+        else:
+            vlog.info("Configure default gateway IPv6: failed")
+            return False
+
+    except NetlinkError as e:
+        vlog.err("Adding Ipv6 default gateway %s on Mgmt Interface failed with error code=%d"%( def_gw_ipv6, e.code) )
+        return False
+    except:
+        vlog.err("Unexpected error:" + str(sys.exc_info()[0]))
+        return False
+
+    return True
+
+# Function to remove configured default gateway
+def mgmt_intf_remove_def_gw_ipv6(def_gw_ipv6):
+
+    if def_gw_ipv6 == DEFAULT_IPV6:
+        return False
+
+    cfg_gw_ipv6 = DEFAULT_IPV6
+
+    try:
+        ipr = IPRoute()
+        # Get the configured gateway
+        if ipr.get_default_routes(family=AF_INET6):
+            gw_list = [x.get_attr('RTA_GATEWAY') for x in ipr.get_default_routes(family=AF_INET6)]
+            if gw_list:
+                cfg_gw_ipv6 = gw_list[0]
+        # Gateway does not exist. So nothing to remove
+        if cfg_gw_ipv6 != def_gw_ipv6:
+            ipr.close()
+            return True
+        # Remove the default gateway
+        ipr.route('delete', gateway=def_gw_ipv6,family=AF_INET6)
+        ipr.close()
+    except NetlinkError as e:
+        vlog.err("Removing Ipv6 default gateway %s on Mgmt Interface failed with error code=%d", def_gw_ipv6, e.code )
+        return False
+    except:
+        vlog.err("Unexpected error:" + str(sys.exc_info()[0]))
+        return False
+
+    return True
+
+# Function to clear the IPv6 values.
+def mgmt_intf_clear_ipv6_param(mgmt_intf, def_gw_ipv6):
+    mgmt_intf_remove_ipv6(mgmt_intf)
+    mgmt_intf_remove_def_gw_ipv6(def_gw_ipv6)
+
+    return True
 
 # Function to fetch row and handle the configurations.
 # Only modified variables are handled.
@@ -433,12 +626,26 @@ def mgmt_intf_cfg_update(idl):
                     #   Stop the dhcp client (if it was running)
                     #   Clear the values from status column
                     if value == MGMT_INTF_MODE_STATIC:
+                        # Link local will not be retrieved again. So preserve it across mode change.
+                        ipv6_link_local = status_data.get(MGMT_INTF_KEY_IPV6_LINK_LOCAL, DEFAULT_IPV6)
+                        mgmt_intf_clear_ipv6_param(mgmt_intf, status_data.get(MGMT_INTF_KEY_DEF_GW_V6, DEFAULT_IPV6))
                         mgmt_intf_static_mode_handler(idl, mgmt_intf)
+
                         status_data = {}
+                        if ipv6_link_local != DEFAULT_IPV6:
+                            status_data[MGMT_INTF_KEY_IPV6_LINK_LOCAL] = ipv6_link_local
+                            status_col_updt_reqd = True
                     else:
                         # Mode is DHCP
+                        # Link local will not be retrieved again. So preserve it across mode change.
+                        ipv6_link_local = status_data.get(MGMT_INTF_KEY_IPV6_LINK_LOCAL, DEFAULT_IPV6)
+                        mgmt_intf_clear_ipv6_param( mgmt_intf, status_data.get(MGMT_INTF_KEY_DEF_GW_V6, DEFAULT_IPV6))
                         mgmt_intf_dhcp_mode_handler(idl, mgmt_intf)
+
                         status_data = {}
+                        if ipv6_link_local != DEFAULT_IPV6:
+                            status_data[MGMT_INTF_KEY_IPV6_LINK_LOCAL] = ipv6_link_local
+                            status_col_updt_reqd = True
                     mode_val = value
         else:
             continue
@@ -447,8 +654,6 @@ def mgmt_intf_cfg_update(idl):
             vlog.err("Could not update configured values. Management Interface was not available.")
             return False
 
-        # Update Status column only if any configuration changed.
-        status_col_updt_reqd = False
         cfg_ip = DEFAULT_IPV4
         dns1 = DEFAULT_IPV4
 
@@ -504,6 +709,31 @@ def mgmt_intf_cfg_update(idl):
                     status_data[MGMT_INTF_KEY_IP] = cfg_ip
                     status_data[MGMT_INTF_KEY_SUBNET] = value
                     status_col_updt_reqd = True
+
+            #-------------------------IPv6 HANDLER ------------------------------------
+            if key == MGMT_INTF_KEY_IPV6:
+                if mode_val != MGMT_INTF_MODE_STATIC:
+                    continue
+
+                # Get the previously configured IPv6 if any and check if we are trying to update the same value.
+                prev_ip = status_data.get(MGMT_INTF_KEY_IPV6, DEFAULT_IPV6)
+                if prev_ip == value:
+                    continue
+
+                if prev_ip != DEFAULT_IPV6:
+                    # If IPv6 is set again the previous value has to be removed before the new one is set.
+                    mgmt_intf_remove_ipv6(mgmt_intf)
+                    del status_data[MGMT_INTF_KEY_IPV6]
+                    status_col_updt_reqd = True
+
+                if value != DEFAULT_IPV6:
+                    offset = value.find('/')
+                    ipv6_addr = value[0:offset]
+                    ipv6_prefix = int(value[offset+1:len(value)])
+                    if mgmt_intf_add_ipv6(mgmt_intf,ipv6_addr,ipv6_prefix):
+                        status_data[MGMT_INTF_KEY_IPV6] = value
+                        status_col_updt_reqd = True
+
             #-------------------------DEFAULT GATEWAY HANDLER ------------------------------------
             if key == MGMT_INTF_KEY_DEF_GW:
                 if mode_val != MGMT_INTF_MODE_STATIC:
@@ -533,6 +763,29 @@ def mgmt_intf_cfg_update(idl):
                     status_data[MGMT_INTF_KEY_DEF_GW] = value
                     status_col_updt_reqd = True
 
+            #-------------------------DEFAULT GATEWAY HANDLER IPV6------------------------------------
+            if key == MGMT_INTF_KEY_DEF_GW_V6:
+                if mode_val != MGMT_INTF_MODE_STATIC:
+                    continue
+
+                # Get the previously configured gw if any and check if we are trying to update the same value.
+                prev_gw = status_data.get(MGMT_INTF_KEY_DEF_GW_V6,DEFAULT_IPV6)
+                if prev_gw == value:
+                    continue
+
+                if value != DEFAULT_IPV6:
+                    if prev_gw != DEFAULT_IPV6:
+                        mgmt_intf_remove_def_gw_ipv6(prev_gw)
+                        del status_data[MGMT_INTF_KEY_DEF_GW_V6]
+
+                    if mgmt_intf_add_def_gw_ipv6(value):
+                        status_data[MGMT_INTF_KEY_DEF_GW_V6] = value
+                        status_col_updt_reqd = True
+                else:
+                    mgmt_intf_remove_def_gw_ipv6(prev_gw)
+                    if prev_gw != DEFAULT_IPV6:
+                        del status_data[MGMT_INTF_KEY_DEF_GW_V6]
+                        status_col_updt_reqd = True
             #-------------------------PRIMARY DNS HANDLER ------------------------------------
             if key == MGMT_INTF_KEY_DNS1:
                 if mode_val != MGMT_INTF_MODE_STATIC:
@@ -550,7 +803,7 @@ def mgmt_intf_cfg_update(idl):
                     mgmt_intf_clear_dns_conf()
 
                 # no nameserver <ip-addr case>.
-                if value == DEFAULT_IPV4:
+                if (value == DEFAULT_IPV4) or (value == DEFAULT_IPV6):
                     '''
                       Previously configured dns1 is removed here.
                       Sometimes when the daemon restarts again the dns value might not be present.
@@ -573,7 +826,7 @@ def mgmt_intf_cfg_update(idl):
 
                 dns2 = status_data.get(MGMT_INTF_KEY_DNS2, DEFAULT_IPV4)
                 # no nameserver <dns1-ip-addr> <dns2-ip-addr> case.
-                if (value == DEFAULT_IPV4) and (dns2 != DEFAULT_IPV4):
+                if ((value == DEFAULT_IPV4) or (value == DEFAULT_IPV6)) and (dns2 != DEFAULT_IPV4):
                     mgmt_intf_clear_dns_conf()
                     '''
                      DNS1 would have been deleted already in DNS1 handler.
@@ -613,7 +866,7 @@ def mgmt_intf_cfg_update(idl):
         # So flush out these default values.
         if DEFAULT_DNS_1 in output or DEFAULT_DNS_2 in output:
             mgmt_intf_clear_dns_conf()
-            fd.close()
+
             # Remove the configured DNS values from status column, so that the configuration will be
             # written into the conf file and status col will be updated next time when cfg_update happens.
             dns_1 = status_data.get(MGMT_INTF_KEY_DNS1, DEFAULT_IPV4)
@@ -622,10 +875,11 @@ def mgmt_intf_cfg_update(idl):
                 dns_2 = status_data.get(MGMT_INTF_KEY_DNS2, DEFAULT_IPV4)
                 if  dns_2 != DEFAULT_IPV4:
                     mgmt_intf_update_dns_conf(dns_1, dns_2)
+        fd.close()
     except IOError:
         vlog.err("File operation failed for file " + DNS_FILE)
 
-    fd.close()
+
     if (status_col_updt_reqd):
         txn = ovs.db.idl.Transaction(idl)
 
@@ -633,15 +887,15 @@ def mgmt_intf_cfg_update(idl):
 
         status = txn.commit_block()
 
-        if status != "success":
+        if status != "success" and status != "unchanged":
             # The difference in values between mgmt_intf and mgmt_intf_status will help us debug which updated failed.
-            vlog.err("Updating status column failed")
+            vlog.err("Updating status column failed with status %s"%(status))
             return False
 
     return True
 
 # Function to calculate the subnet from dotted decimal format.
-def mgmt_intf_calcDottedNetmask(mask):
+def mgmt_intf_calc_dotted_netmask(mask):
     bits = 0
     for i in xrange(32 - mask, 32):
         bits |= (1 << i)
@@ -675,7 +929,9 @@ def mgmt_intf_update_dhcp_param(idl):
     for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
         if ovs_rec.mgmt_intf_status:
             status_data = ovs_rec.mgmt_intf_status
-
+            ipv6_link_local = status_data.get(MGMT_INTF_KEY_IPV6_LINK_LOCAL,DEFAULT_IPV6)
+            if ipv6_link_local != DEFAULT_IPV6:
+                data[MGMT_INTF_KEY_IPV6_LINK_LOCAL] = ipv6_link_local
     try:
         ipr = IPRoute()
         if ipr.get_addr(label=mgmt_intf):
@@ -702,7 +958,7 @@ def mgmt_intf_update_dhcp_param(idl):
 
                 dhcp_prefix = dhcp_prefix_list[0]
                 data[MGMT_INTF_KEY_IP] = dhcp_ip
-                data[MGMT_INTF_KEY_SUBNET] = mgmt_intf_calcDottedNetmask(dhcp_prefix)
+                data[MGMT_INTF_KEY_SUBNET] = mgmt_intf_calc_dotted_netmask(dhcp_prefix)
                 is_updt = True
 
         if ipr.get_default_routes(table=254):
@@ -768,9 +1024,159 @@ def mgmt_intf_update_dhcp_param(idl):
 
         setattr(ovs_rec, "mgmt_intf_status", data)
         status = txn.commit_block()
-        if status != "success":
-            vlog.err("Updating ovsdb for dhcp parameter failed")
+        if status != "success" and status != "unchanged":
+            vlog.err("Updating ovsdb for dhcp parameter failed with status %s"%(status))
             return False
+    return True
+
+# Function to update the values populated by DHCP client to ovsdb
+def mgmt_intf_update_dhcp_param_ipv6(idl):
+
+    mgmt_intf = MGMT_INTF_NULL_VAL
+
+    # Retrieve the mode and interface from config table
+    for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+        if ovs_rec.mgmt_intf:
+            mgmt_intf = ovs_rec.mgmt_intf.get(MGMT_INTF_KEY_NAME, MGMT_INTF_NULL_VAL)
+
+    if mgmt_intf == MGMT_INTF_NULL_VAL:
+        vlog.err("Could not update DHCP values. Management Interface was not available.")
+        return False
+
+    # If mode is not dhcp then dont update anything.
+    if mode_val != MGMT_INTF_MODE_DHCP:
+        return True
+
+    # Initialize the values to be used.
+    is_updt = False
+
+    status_data = {}
+    # Get the cuurent values from status column
+    for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+        if ovs_rec.mgmt_intf_status:
+            status_data = ovs_rec.mgmt_intf_status
+
+    dhcp_ipv6 = status_data.get(MGMT_INTF_KEY_IPV6,DEFAULT_IPV6)
+    dhcp_gw_ipv6 = status_data.get(MGMT_INTF_KEY_DEF_GW_V6,DEFAULT_IPV6)
+
+    try:
+        ipr = IPRoute()
+        # lookup interface by name
+        dev = ipr.link_lookup(ifname=mgmt_intf)[0]
+        #update IPv6 global address in DB
+        if ipr.get_addr(index=dev,family = AF_INET6,scope = SCOPE_IPV6_GLOBAL):
+            dhcp_ip_list = [x.get_attr('IFA_ADDRESS') for x in ipr.get_addr(index=dev,family = AF_INET6,scope = SCOPE_IPV6_GLOBAL)]
+            if not dhcp_ip_list:
+                # Mode is DHCP but no IP. Resolved might write back the default values.
+                # So flush the DNS file
+                flush_dns_file()
+                return True
+
+            dhcp_ip = dhcp_ip_list[0]
+            dhcp_prefix_list = [x['prefixlen'] for x in ipr.get_addr(index=dev,family = AF_INET6,scope = SCOPE_IPV6_GLOBAL)]
+            dhcp_prefix = dhcp_prefix_list[0]
+            dhcp_addr_prefix = dhcp_ip + "/" + str(dhcp_prefix)
+            #update the ovsdb only if the already existing value is different from the dhcp populated value
+            if (dhcp_ipv6 != dhcp_addr_prefix) and (dhcp_addr_prefix != DEFAULT_IPV6):
+                dhcp_ipv6 = dhcp_addr_prefix
+                is_updt = True
+
+        #Update default-gateway-ipv6
+        if ipr.get_default_routes(family=AF_INET6):
+            cfg_gw_ipv6 = [x.get_attr('RTA_GATEWAY') for x in ipr.get_default_routes(family=AF_INET6)][0]
+            #update the ovsdb only if the already existing value is different from the dhcp populated value
+            if (dhcp_gw_ipv6 != cfg_gw_ipv6) and (cfg_gw_ipv6 != DEFAULT_IPV6):
+                dhcp_gw_ipv6 = cfg_gw_ipv6
+                is_updt = True
+
+        ipr.close()
+
+    except NetlinkError as e:
+        vlog.err("Updating DHCP Ipv6 values on Mgmt Interface %s failed with error code=%d", mgmt_intf, e.code )
+        return False
+    except:
+        vlog.err("Unexpected error:" + str(sys.exc_info()[0]))
+        return False
+
+    if is_updt:
+        txn = ovs.db.idl.Transaction(idl)
+
+        for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+                data = ovs_rec.mgmt_intf_status
+                break
+
+        if dhcp_ipv6 != DEFAULT_IPV6:
+            data[MGMT_INTF_KEY_IPV6] = dhcp_ipv6
+
+        if dhcp_gw_ipv6 != DEFAULT_IPV6:
+            data[MGMT_INTF_KEY_DEF_GW_V6] = dhcp_gw_ipv6
+
+        setattr(ovs_rec, "mgmt_intf_status", data)
+        status = txn.commit_block()
+        if status != "success" and status != "unchanged":
+            vlog.err("Updating ovsdb for ipv6 parameter populated from dhcp failed with status %s"%(status))
+            return False
+
+    return True
+
+# Update IPv6 link local address in DB status column
+def mgmt_intf_update_ipv6_linklocal(idl):
+
+    is_updt = False
+
+    status_data = {}
+    # Get the cuurent values from status column
+    for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+        if ovs_rec.mgmt_intf_status:
+            status_data = ovs_rec.mgmt_intf_status
+        if ovs_rec.mgmt_intf:
+            mgmt_intf = ovs_rec.mgmt_intf.get(MGMT_INTF_KEY_NAME, MGMT_INTF_NULL_VAL)
+
+    ipv6_link_local = status_data.get(MGMT_INTF_KEY_IPV6_LINK_LOCAL,DEFAULT_IPV6)
+
+    try:
+        ipr = IPRoute()
+        # lookup interface by name
+        dev = ipr.link_lookup(ifname=mgmt_intf)[0]
+
+        # Update link local address in DB
+        if ipr.get_addr(index=dev,family = AF_INET6,scope = SCOPE_IPV6_LINK_LOCAL):
+            dhcp_ip_list = [x.get_attr('IFA_ADDRESS') for x in ipr.get_addr(index=dev,family = AF_INET6,scope = SCOPE_IPV6_LINK_LOCAL)]
+
+            dhcp_ip = dhcp_ip_list[0]
+            dhcp_prefix_list = [x['prefixlen'] for x in ipr.get_addr(index=dev,family = AF_INET6,scope = SCOPE_IPV6_LINK_LOCAL)]
+            dhcp_prefix = dhcp_prefix_list[0]
+            ipv6_link = dhcp_ip + "/" + str(dhcp_prefix)
+            #update the ovsdb only if the already existing value is different from the dhcp populated value
+            if (ipv6_link_local != ipv6_link) and (ipv6_link != DEFAULT_IPV6):
+                ipv6_link_local = ipv6_link
+                is_updt = True
+
+        ipr.close()
+    except NetlinkError as e:
+        vlog.err("Updating Ipv6 link local on Mgmt Interface failed with error code=%d", e.code )
+        ipr.close()
+        return False
+    except:
+        vlog.err("Unexpected error:" + str(sys.exc_info()[0]))
+        ipr.close()
+        return False
+
+    if is_updt:
+        txn = ovs.db.idl.Transaction(idl)
+
+        for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+                data = ovs_rec.mgmt_intf_status
+                break
+
+        data[MGMT_INTF_KEY_IPV6_LINK_LOCAL] = ipv6_link_local
+
+        setattr(ovs_rec, "mgmt_intf_status", data)
+        status = txn.commit_block()
+        if status != "success" and status != "unchanged":
+            vlog.err("Updating ovsdb for ipv6 link local failed with status %s"%(status))
+            return False
+
     return True
 
 # This function is not called. But maintained for use during debugging.
@@ -791,7 +1197,9 @@ def mgmt_intf_run(idl,seqno):
 
     # To DO: For now we are checking for DHCP populated values once in every 2 seconds.
     #        Will modify to update only if it gets change interrupt.
+    mgmt_intf_update_ipv6_linklocal(idl)
     mgmt_intf_update_dhcp_param(idl)
+    mgmt_intf_update_dhcp_param_ipv6(idl)
 
 #------------------ wait_for_config_complete() ----------------
 def wait_for_config_complete(idl):
@@ -861,12 +1269,11 @@ def main():
 
         unixctl_server.run()
 
-        if seqno == idl.change_seqno:
-            poller = ovs.poller.Poller()
-            unixctl_server.wait(poller)
-            idl.wait(poller)
-            poller.timer_wait_until(5000)
-            poller.block()
+        poller = ovs.poller.Poller()
+        unixctl_server.wait(poller)
+        idl.wait(poller)
+        poller.timer_wait_until(ovs.timeval.msec() + 5000)
+        poller.block()
 
         if exiting:
             break;
