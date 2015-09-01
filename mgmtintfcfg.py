@@ -61,6 +61,8 @@ MGMT_INTF_MODE_STATIC = "static"
 MGMT_INTF_KEY_IPV6 = "ipv6"
 MGMT_INTF_KEY_DEF_GW_V6 = "default-gateway-v6"
 MGMT_INTF_KEY_IPV6_LINK_LOCAL = "ipv6-linklocal"
+AF_INET = 2
+RT_TABLE_MAIN = 254
 #IPv6 Macros
 DEFAULT_IPV6 = "::"
 #Ipv6 family
@@ -118,10 +120,12 @@ def mgmt_intf_add_ip(mgmt_intf, ip_val, prefixlen):
         dev = ipr.link_lookup(ifname=mgmt_intf)[0]
 
         # Get the IP configured and check if the IP we are trying to configure is already present.
-        ip_list = [x.get_attr('IFA_ADDRESS') for x in ipr.get_addr(label=mgmt_intf)]
+        ip_list = [x.get_attr('IFA_ADDRESS') \
+                   for x in ipr.get_addr(label=mgmt_intf,family = AF_INET)]
         if ip_list:
             ip = ip_list[0]
-        prefix_list = [x['prefixlen'] for x in ipr.get_addr(label=mgmt_intf)]
+        prefix_list = [x['prefixlen'] \
+                       for x in ipr.get_addr(label=mgmt_intf,family = AF_INET)]
         if prefix_list:
             prefix = prefix_list[0]
 
@@ -155,10 +159,12 @@ def mgmt_intf_remove_ip(mgmt_intf, ip_val, prefixlen):
     try:
         ipr = IPRoute()
         # Get the configured IP and see if the IP we are trying to remove is present.
-        ip_list = [x.get_attr('IFA_ADDRESS') for x in ipr.get_addr(label=mgmt_intf)]
+        ip_list = [x.get_attr('IFA_ADDRESS') \
+                   for x in ipr.get_addr(label=mgmt_intf,family = AF_INET)]
         if ip_list:
             ip = ip_list[0]
-            prefix_list = [x['prefixlen'] for x in ipr.get_addr(label=mgmt_intf)]
+            prefix_list = [x['prefixlen'] \
+                           for x in ipr.get_addr(label=mgmt_intf,family = AF_INET)]
             if prefix_list:
                 prefix = prefix_list[0]
         else:
@@ -202,8 +208,9 @@ def mgmt_intf_add_def_gw(def_gw):
     try:
         ipr = IPRoute()
         # Get the existing default routes if any.
-        if ipr.get_default_routes(table=254):
-            gw_list = [x.get_attr('RTA_GATEWAY') for x in ipr.get_default_routes(table=254)]
+        if ipr.get_default_routes(table=RT_TABLE_MAIN,family = AF_INET):
+            gw_list = [x.get_attr('RTA_GATEWAY') \
+                       for x in ipr.get_default_routes(table=RT_TABLE_MAIN,family = AF_INET)]
             if gw_list:
                 cfg_gw = gw_list[0]
                 # If default route is already present then nothing to do.
@@ -234,8 +241,9 @@ def mgmt_intf_remove_def_gw(def_gw):
     try:
         ipr = IPRoute()
         # Get the configured gateway.
-        if ipr.get_default_routes(table=254):
-            gw_list = [x.get_attr('RTA_GATEWAY') for x in ipr.get_default_routes(table=254)]
+        if ipr.get_default_routes(table=RT_TABLE_MAIN,family = AF_INET):
+            gw_list = [x.get_attr('RTA_GATEWAY') \
+                       for x in ipr.get_default_routes(table=RT_TABLE_MAIN,family = AF_INET)]
             if gw_list:
                 cfg_gw = gw_list[0]
             else:
@@ -274,7 +282,6 @@ def mgmt_intf_clear_static_val(mgmt_intf):
     # which is ok in this case.
     mgmt_intf_remove_ip(mgmt_intf, DEFAULT_IPV4, 0)
     mgmt_intf_remove_def_gw(DEFAULT_IPV4)
-    mgmt_intf_clear_dns_conf()
     vlog.info("Cleared all statically configured values on mgmt interface")
 
 # Update the OVSDB with the updated values.
@@ -343,8 +350,8 @@ def mgmt_intf_clear_dhcp_val(mgmt_intf):
                     dev = ipr.link_lookup(ifname=mgmt_intf)[0]
                     ipr.addr('delete', dev, address=ip, mask=prefix)
 
-        if ipr.get_default_routes(table=254):
-            gw_list = [x.get_attr('RTA_GATEWAY') for x in ipr.get_default_routes(table=254)]
+        if ipr.get_default_routes(table=RT_TABLE_MAIN):
+            gw_list = [x.get_attr('RTA_GATEWAY') for x in ipr.get_default_routes(table=RT_TABLE_MAIN)]
             if gw_list:
                 cfg_gw = gw_list[0]
                 # Remove the default gateway.
@@ -934,8 +941,9 @@ def mgmt_intf_update_dhcp_param(idl):
                 data[MGMT_INTF_KEY_IPV6_LINK_LOCAL] = ipv6_link_local
     try:
         ipr = IPRoute()
-        if ipr.get_addr(label=mgmt_intf):
-            dhcp_ip_list = [x.get_attr('IFA_ADDRESS') for x in ipr.get_addr(label=mgmt_intf)]
+        if ipr.get_addr(label=mgmt_intf,family=AF_INET):
+            dhcp_ip_list = [x.get_attr('IFA_ADDRESS') \
+                            for x in ipr.get_addr(label=mgmt_intf,family=AF_INET)]
             if not dhcp_ip_list:
                 # Mode is DHCP but no IP. Resolved might write back the default values.
                 # So flush the DNS file.
@@ -948,7 +956,8 @@ def mgmt_intf_update_dhcp_param(idl):
             # update the ovsdb only if the already existing value is different from the dhcp populated value.
             ovsdb_ip = status_data.get(MGMT_INTF_KEY_IP, DEFAULT_IPV4)
             if (dhcp_ip != ovsdb_ip) and (dhcp_ip != DEFAULT_IPV4):
-                dhcp_prefix_list = [x['prefixlen'] for x in ipr.get_addr(label=mgmt_intf)]
+                dhcp_prefix_list = [x['prefixlen'] \
+                                    for x in ipr.get_addr(label=mgmt_intf,family=AF_INET)]
                 if not dhcp_prefix_list:
                 # Mode is DHCP but no IP. Resolved might write back the default values.
                 # So flush the DNS file.
@@ -961,8 +970,9 @@ def mgmt_intf_update_dhcp_param(idl):
                 data[MGMT_INTF_KEY_SUBNET] = mgmt_intf_calc_dotted_netmask(dhcp_prefix)
                 is_updt = True
 
-        if ipr.get_default_routes(table=254):
-            dhcp_gw = [x.get_attr('RTA_GATEWAY') for x in ipr.get_default_routes(table=254)][0]
+        if ipr.get_default_routes(table=RT_TABLE_MAIN,family=AF_INET):
+            dhcp_gw = [x.get_attr('RTA_GATEWAY') \
+                       for x in ipr.get_default_routes(table=RT_TABLE_MAIN,family=AF_INET)][0]
             # update the ovsdb only if the already existing value is different from the dhcp populated value.
             ovsdb_gw = status_data.get(MGMT_INTF_KEY_DEF_GW, DEFAULT_IPV4)
             if (dhcp_gw != ovsdb_gw) and (dhcp_gw != DEFAULT_IPV4):
