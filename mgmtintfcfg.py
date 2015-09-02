@@ -480,10 +480,10 @@ def mgmt_intf_add_ipv6(mgmt_intf, ipv6_addr, ipv6_prefix ):
 
         # If the IP configs are updated properly then update the DB status column
         if ip == ipv6_addr and ipv6_prefix == prefix:
-            vlog.info("Configure static Ipv6 address: success")
+            vlog.info("Configure static Ipv6 address %s/%s: success"%(ipv6_addr,ipv6_prefix))
             return True
         else:
-            vlog.err("Configure static Ipv6 address: failed")
+            vlog.err("Configure static Ipv6 address %s/%s: failed"%(ipv6_addr,ipv6_prefix))
             return False
 
     except NetlinkError as e:
@@ -552,9 +552,9 @@ def mgmt_intf_add_def_gw_ipv6(def_gw_ipv6):
         ipr.close()
         # If default route is properly configured then update the DB status column
         if cfg_gw_ipv6 == def_gw_ipv6:
-            vlog.info("Configure default gateway IPv6: success")
+            vlog.info("Configure IPv6 default gateway %s: success"%def_gw_ipv6)
         else:
-            vlog.info("Configure default gateway IPv6: failed")
+            vlog.info("Configure IPv6 default gateway %s: failed"%def_gw_ipv6)
             return False
 
     except NetlinkError as e:
@@ -704,7 +704,10 @@ def mgmt_intf_cfg_update(idl):
 
                 # If the configured IP is not valid then continue. This will happen in ip remove case.
                 if cfg_ip == DEFAULT_IPV4:
-                    continue
+                    # Check if only subnet has changed.
+                    cfg_ip = status_data.get(MGMT_INTF_KEY_IP, DEFAULT_IPV4)
+                    if cfg_ip == DEFAULT_IPV4:
+                        continue
 
                 # If value is 0.0.0.0 then the handling is already done in IP handler.
                 if value == DEFAULT_IPV4:
