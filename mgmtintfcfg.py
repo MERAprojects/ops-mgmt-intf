@@ -681,8 +681,7 @@ def mgmt_intf_cfg_update(idl):
                 if prev_ip != DEFAULT_IPV4:
                     prev_subnet = status_data.get(MGMT_INTF_KEY_SUBNET, DEFAULT_IPV4)
                     if prev_subnet != DEFAULT_IPV4:
-                        prefix = sum([bin(int(x)).count('1') for x in prev_subnet.split('.')])
-                        mgmt_intf_remove_ip(mgmt_intf, prev_ip, prefix)
+                        mgmt_intf_remove_ip(mgmt_intf, prev_ip, prev_subnet)
                     else:
                         # IP was there but subnet not found. So remove the ip.
                         del status_data[MGMT_INTF_KEY_IP]
@@ -714,8 +713,7 @@ def mgmt_intf_cfg_update(idl):
                     continue
 
                 # If adding IP fails then ip will not be updated in status column so that it will be retried again.
-                prefix = sum([bin(int(x)).count('1') for x in value.split('.')])
-                if mgmt_intf_add_ip(mgmt_intf, cfg_ip, prefix):
+                if mgmt_intf_add_ip(mgmt_intf, cfg_ip, int(value)):
                     status_data[MGMT_INTF_KEY_IP] = cfg_ip
                     status_data[MGMT_INTF_KEY_SUBNET] = value
                     status_col_updt_reqd = True
@@ -904,13 +902,6 @@ def mgmt_intf_cfg_update(idl):
 
     return True
 
-# Function to calculate the subnet from dotted decimal format.
-def mgmt_intf_calc_dotted_netmask(mask):
-    bits = 0
-    for i in xrange(32 - mask, 32):
-        bits |= (1 << i)
-    return inet_ntoa(pack('>I', bits))
-
 # Function to update the values populated by DHCP client to ovsdb.
 # To Do: This function should be called based on interrupt. Now it is called every 2 seconds.
 def mgmt_intf_update_dhcp_param(idl):
@@ -970,7 +961,7 @@ def mgmt_intf_update_dhcp_param(idl):
 
                 dhcp_prefix = dhcp_prefix_list[0]
                 data[MGMT_INTF_KEY_IP] = dhcp_ip
-                data[MGMT_INTF_KEY_SUBNET] = mgmt_intf_calc_dotted_netmask(dhcp_prefix)
+                data[MGMT_INTF_KEY_SUBNET] = str(dhcp_prefix)
                 is_updt = True
 
         if ipr.get_default_routes(table=RT_TABLE_MAIN,family=AF_INET):
