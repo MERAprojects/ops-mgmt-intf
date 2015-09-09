@@ -27,12 +27,12 @@ from mininet.cli import *
 from mininet.log import *
 from mininet.util import *
 from subprocess import *
-from halonvsi.docker import *
-from halonvsi.halon import *
+from opsvsi.docker import *
+from opsvsi.opsvsitest import *
 import select
 
 
-class mgmtIntfTests( HalonTest ):
+class mgmtIntfTests( OpsVsiTest ):
     #This class memeber used to retaining the IPv4 whcih is got from DHCP server
     Dhcp_Ipv4_submask=''
 
@@ -44,9 +44,9 @@ class mgmtIntfTests( HalonTest ):
                                      hopts=self.getHostOpts(),
                                      sopts=self.getSwitchOpts())
         self.net = Mininet(topo=mgmt_topo,
-                           switch=HalonSwitch,
-                           host=HalonHost,
-                           link=HalonLink, controller=None,
+                           switch=VsiOpenSwitch,
+                           host=Host,
+                           link=OpsVsiLink, controller=None,
                            build=True)
 
     def numToDottedQuad(self,n):
@@ -58,35 +58,33 @@ class mgmtIntfTests( HalonTest ):
             d = d/256
         return '.'.join(q)
 
-    def mgmt_intf_config_commands_dhcp_ipv4(self):
-        info('\n########## Test to configure Management interface with DHCP IPV4 ##########\n')
-        # configuring Halon, in the future it would be through
-        # proper Halon commands.
+    # DHCP client started on management interface.
+    def dhclient_started_on_mgmt_intf_ipv4(self):
         s1 = self.net.switches[ 0 ]
-
-        #dhclient binary not running in docker image
-        #So disabling this testcase,Will be enabling after fixing dhclient issue.
-        '''
-        # DHCP client started on management interface
         output = s1.cmd("systemctl status dhclient@eth0.service")
-        #assert 'running' in output,'Test to verify dhcp client has started Failed'
+        assert 'running' in output,'Test to verify dhcp client has started Failed'
         info('### Sucussfully verified dhcp client has started ###\n')
-        '''
 
-        # Mgmt Interface updated during bootup.
+    # Mgmt Interface updated during bootup.
+    def mgmt_intf_updated_during_bootup(self):
+        s1 = self.net.switches[ 0 ]
         output = s1.cmd("ovs-vsctl list open_vswitch")
         output += s1.cmd("echo")
         assert 'name="eth0"' in output,'Test to mgmt interface has updated from image.manifest file Failed'
         info('### Sucussfully verified mgmt interface has updated from image.manifest file ###\n')
 
-        # Enter the management interface context.
+    # Enter the management interface context.
+    def mgmt_intf_context_enter(self):
+        s1 = self.net.switches[ 0 ]
         output = s1.cmdCLI("configure terminal")
         assert 'Unknown command' not in output,'Test to enter the management interface context Failed'
         output = s1.cmdCLI("interface mgmt")
         assert 'Unknown command' not in output,'Test to enter the management interface context Failed'
         info('### Sucussfully verified enter into the management interface context ###\n')
 
-        # Set mode as DHCP
+    # Set mode as DHCP.
+    def dhcp_mode_set_on_mgmt_intf(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("ip dhcp")
         output = s1.cmdCLI(" ")
         cnt = 15
@@ -102,15 +100,17 @@ class mgmtIntfTests( HalonTest ):
                 cnt -= 1
         self.Dhcp_Ipv4_submask = re.findall("\d+.\d+.\d+.\d+/.\d+",tmp[0])[0].split("/")
         assert 'dhcp' in output,'Test to set mode as DHCP Failed'
-        #dhclient binary not running in docker image
-        #So disabling this testcase,Will be enabling after fixing dhclient issue.
+        #dhclient binary not running in docker image.
+        #So disabling this testcase contion,Will be enabling after fixing dhclient issue.
         '''
         output = s1.cmd("systemctl status dhclient@eth0.service")
         assert 'running' in output,'Test to set mode as DHCP Failed'
         '''
         info('### Sucussfully configured DHCP mode ###\n')
 
-        #Add Default gateway in DHCP mode
+    # Add Default gateway in DHCP mode.
+    def config_default_gateway_ipv4_dhcp_mode(self):
+        s1 = self.net.switches[ 0 ]
         output = s1.cmdCLI("default-gateway 172.17.0.1")
         assert 'Configurations not allowed in dhcp mode' in output,'Test to add default gateway in DHCP mode Failed'
         output = s1.cmdCLI(" ")
@@ -119,7 +119,9 @@ class mgmtIntfTests( HalonTest ):
         assert temp[0] in output,'Test to add default gateway in DHCP mode Failed'
         info('### Sucussfully verified configuration of Deafult gateway in DHCP mode ###\n')
 
-        # Add DNS Server 1 in DHCP mode.
+    # Add DNS Server 1 in DHCP mode.
+    def config_primary_ipv4_dns_dhcp_mode(self):
+        s1 = self.net.switches[ 0 ]
         output = s1.cmdCLI("nameserver 10.10.10.1")
         assert 'Configurations not allowed in dhcp mode' in output,'Test to add Primary DNS in DHCP mode Failed'
         output = s1.cmdCLI(" ")
@@ -128,7 +130,9 @@ class mgmtIntfTests( HalonTest ):
         assert '10.10.10.1' not in output,'Test to add Primary DNS in DHCP mode Failed'
         info('### Sucussfully verified configuration of Primary DNS in DHCP mode ###\n')
 
-        # Add DNS Server 2 in DHCP mode.
+    # Add DNS Server 2 in DHCP mode.
+    def config_secondary_ipv4_dns_dhcp_mode(self):
+        s1 = self.net.switches[ 0 ]
         output = s1.cmdCLI("nameserver 10.10.10.1 10.10.10.2")
         assert 'Configurations not allowed in dhcp mode' in output,'Test to add Secondary DNS in DHCP mode Failed'
         output = s1.cmdCLI(" ")
@@ -138,11 +142,9 @@ class mgmtIntfTests( HalonTest ):
         assert '10.10.10.2' not in output,'Test to add Secondary DNS in DHCP mode Failed'
         info('### Sucussfully verified configuration of Secondary DNS in DHCP mode ###\n')
 
-    def mgmt_intf_config_commands_static_ipv4(self):
-        info('\n########## Test to configure Management interface with static IPV4 ##########\n')
+    # Static IP config when mode is static.
+    def config_ipv4_on_mgmt_intf_static_mode(self):
         s1 = self.net.switches[ 0 ]
-
-        # Static IP config when mode is static.
         IPV4_static = re.sub('\d+$','128', self.Dhcp_Ipv4_submask[0])
         s1.cmdCLI("ip static "+IPV4_static+"/"+self.Dhcp_Ipv4_submask[1])
         output = s1.cmdCLI(" ")
@@ -171,7 +173,9 @@ class mgmtIntfTests( HalonTest ):
                 'Test to add static IP address in static mode Failed'
         info('### Sucussfully configured static IP address in static mode ###\n')
 
-        # Reconfigure Sattic IP when mode is static
+    # Reconfigure Sattic IP when mode is static.
+    def reconfig_ipv4_on_mgmt_intf_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         IPV4_static = re.sub('\d+$','129', self.Dhcp_Ipv4_submask[0])
         s1.cmdCLI("ip static "+IPV4_static+"/"+self.Dhcp_Ipv4_submask[1])
         output = s1.cmdCLI(" ")
@@ -200,7 +204,9 @@ class mgmtIntfTests( HalonTest ):
                 'Test to Reconfigure static IP address in static mode Failed'
         info('### Sucussfully Reconfigured static IP address in static mode ###\n')
 
-        # Add Default gateway in Static mode.
+    # Add Default gateway in Static mode.
+    def config_ipv4_default_gateway_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         IPV4_default = re.sub('\d+$','130', self.Dhcp_Ipv4_submask[0])
         s1.cmdCLI("default-gateway "+IPV4_default)
         output = s1.cmdCLI(" ")
@@ -226,7 +232,10 @@ class mgmtIntfTests( HalonTest ):
         assert IPV4_default in output,'Test to add Default gateway in static mode Failed'
         info('### Sucussfully configured Default gateway in static mode ###\n')
 
-        # Remove Default gateway in static mode.
+    # Remove Default gateway in static mode.
+    def unconfig_ipv4_default_gateway_static_mode(self):
+        s1 = self.net.switches[ 0 ]
+        IPV4_default = re.sub('\d+$','130', self.Dhcp_Ipv4_submask[0])
         s1.cmdCLI("no default-gateway "+IPV4_default)
         output = s1.cmdCLI(" ")
         output = s1.cmdCLI("do show interface mgmt")
@@ -248,13 +257,17 @@ class mgmtIntfTests( HalonTest ):
         assert IPV4_default not in output,'Test to remove default gateway Failed'
         info('### Sucussfully Removed Default gateway in static mode ###\n')
 
-        #Add IPv6 Default gateway in static mode when IPV4 configured
+    # Add IPv6 Default gateway in static mode when IPV4 configured.
+    def config_ipv6_default_gateway_ipv4_is_set_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output = s1.cmdCLI("default-gateway 2001:db8:0:1::128")
         assert 'IP should be configured first' in output, \
                 'Test to Add IPV6 default gateway when IPV4 configured in static mode Failed'
         info('### Sucussfully verified configuration of IPV6 default gateway when IPV4 is configured in static mode ###\n')
 
-        # Add DNS Server 1 in static mode.
+    # Add DNS Server 1 in static mode.
+    def config_primary_ipv4_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("nameserver 10.10.10.5")
         output = s1.cmdCLI(" ")
         cnt = 15
@@ -278,7 +291,9 @@ class mgmtIntfTests( HalonTest ):
         assert '10.10.10.5' in output,'Test to add Primary DNS Failed'
         info('### Sucussfully configured Primary DNS in static mode ###\n')
 
-        # Add another primary DNS server.
+    # Add another primary DNS server.
+    def reconfig_primary_ipv4_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("nameserver 10.10.10.20")
         output = s1.cmdCLI(" ")
         output = s1.cmdCLI("do show interface mgmt")
@@ -306,7 +321,9 @@ class mgmtIntfTests( HalonTest ):
         assert '10.10.10.1' not in output,'Test to Reconfigure Primary DNS Failed'
         info('### Sucussfully Reconfigured Primary DNS in static mode ###\n')
 
-        # Remove primary DNS server.
+    # Remove primary dns in staic mode.
+    def remove_primary_ipv4_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("no nameserver 10.10.10.20")
         cnt = 15
         while cnt:
@@ -330,7 +347,9 @@ class mgmtIntfTests( HalonTest ):
         assert '10.10.10.20' not in output,'Test to Remove Primary DNS Failed'
         info('### Sucussfully Removed Primary DNS in static mode ###\n')
 
-        # Add Secondary DNS Server in static mode.
+    # Configure Secondary DNS Server in static mode.
+    def config_secondary_ipv4_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("nameserver 10.10.10.4 10.10.10.5")
         cnt = 15
         while cnt:
@@ -356,10 +375,12 @@ class mgmtIntfTests( HalonTest ):
         assert '10.10.10.4' in output,'Test to add Secondary DNS Failed'
         info('### Sucussfully Configured Secondary DNS in static mode ###\n')
 
-        # Set the IP again another secondary DNS server.
+    # Reconfigure Secondary DNS Server in static mode.
+    def reconfig_secondary_ipv4_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("nameserver 10.10.10.4 10.10.10.20")
         output_show = s1.cmdCLI("do show interface mgmt")
-        output += s1.cmdCLI(" ")
+        output = s1.cmdCLI(" ")
         cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
@@ -386,7 +407,9 @@ class mgmtIntfTests( HalonTest ):
         assert '10.10.10.20' in output,'Test to Reconfigure Secondary DNS Failed'
         info('### Sucussfully Reconfigured Secondary DNS in static mode ###\n')
 
-        # Remove Secondary DNS server.
+    # Remove Secondary DNS ipv4 in static mode.
+    def unconfig_secondary_ipv4_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("no nameserver  10.10.10.4 10.10.10.20")
         cnt = 15
         while cnt:
@@ -410,72 +433,100 @@ class mgmtIntfTests( HalonTest ):
         assert '10.10.10.20' not in output,'Test to Remove Secondary DNS Failed'
         info('### Sucussfully Removed Secondary DNS in static mode ###\n')
 
-        # Set Invalid IP on mgmt-intf.
+    # Set Invalid IP on mgmt-intf.
+    def config_invalid_ipv4_on_mgmt_intf(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("ip static 0.0.0.0/24")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to configure invalid static IP address Failed'
         info('### Sucussfully verified configure of Invalid IP in static mode ###\n')
 
-        # Set Multicast IP on mgmt-intf.
+    # Set Multicast IP on mgmt-intf.
+    def config_multicast_ipv4_on_mgmt_intf(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("ip static 224.0.0.1/16")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to configure multicast IP address Failed'
         info('### Sucussfully verified configure of multicast IP in static mode ###\n')
 
-        # Set broadcast IP on mgmt-intf.
+    # Set broadcast IP on mgmt-intf.
+    def config_broadcast_ipv4_on_mgmt_intf(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("ip static 192.168.0.255/24")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to configure broadcast IP address Failed'
         info('### Sucussfully verified configure of broadcast IP in static mode ###\n')
 
-        # Set loopback IP on mgmt-intf.
+    # Set loopback IP on mgmt-intf.
+    def config_loopback_ipv4_on_mgmt_intf(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("ip static 127.0.0.1/24")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to configure loopback IP address Failed'
         info('### Sucussfully verified configure of loopback IP in static mode ###\n')
 
-        # Add Default Invalid gateway IP in static mode.
+    # Add Default Invalid gateway IP in static mode
+    def config_invalid_default_gateway_ipv4_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("default-gateway 0.0.0.0")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to add Invalid default gateway Failed'
         info('### Sucussfully Verified configure of Invalid default gateway IP in static mode ###\n')
 
-        # Add multicast ip as default gateway in static mode.
+    # Add multicast ip as default gateway in static mode.
+    def config_multicast_ipv4_default_gateway_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("default-gateway 224.0.0.1")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to add multicast default gateway Failed'
         info('### Sucussfully Verified configure of multicast default gateway IP in static mode ###\n')
 
-        # Add broadcast ip as default gateway ip in static mode.
+    # Add broadcast ip as default gateway ip in static mode.
+    def config_broadcast_ipv4_default_gateway_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("default-gateway 192.168.0.255")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to add broadcast default gateway ip Failed'
         info('### Sucussfully Verified configure of broadcast default gateway in static mode ###\n')
 
-        # Add loopback address as default gateway ip in static mode.
+    # Add loopback address as default gateway ip in static mode
+    def config_loopback_ipv4_default_gateway_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("default-gateway 127.0.0.1")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to add loopback default gateway ip Failed'
         info('### Sucussfully Verified configure of loopback default gateway in static mode ###\n')
 
-        # Configure an invalid IP address as primary DNS.
+    # Configure an invalid IP address as primary DNS.
+    def config_invalid_primary_ipv4_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("nameserver 0.0.0.0")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to add invalid Primary DNS Failed'
         info('### Sucussfully Verified configure of invalid Primary DNS in static mode ###\n')
 
-        # Configure a multicast address as primary DNS.
+    # Configure a multicast address as primary DNS.
+    def config_multicast_ipv4_primary_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("nameserver 224.0.0.1")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to add multicast Primary DNS Failed'
         info('### Sucussfully Verified configure of multicast Primary DNS in static mode ###\n')
 
-        # Configure a broadcast address as primary DNS.
+    # Configure a broadcast address as primary DNS.
+    def config_broadcast_ipv4_primary_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("nameserver 192.168.0.255")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to add broadcast Primary DNS Failed'
         info('### Sucussfully Verified configure of broadcast Primary DNS in static mode ###\n')
 
-        # Configure a loopback address as primary DNS.
+    # Configure a loopback address as primary DNS.
+    def config_loopback_primary_ipv4_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("nameserver 127.0.0.1")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to add loopback Primary DNS Failed'
         info('### Sucussfully Verified configure of loopback Primary DNS in static mode ###\n')
 
-        # Configure an invalid IP as secondary DNS.
+    # Configure an invalid IP as secondary DNS.
+    def config_invalid_ipv4_secondary_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("nameserver 10.10.10.1 0.0.0.0")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to add invalid Secondary DNS Failed'
         info('### Sucussfully Verified configure of invalid secondary DNS in static mode ###\n')
 
-        # Change mode from static to dhcp.
+    # Change mode from static to dhcp.
+    def change_mode_from_static_to_dhcp_ipv4(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("ip dhcp")
         output = s1.cmdCLI(" ")
         cnt = 15
@@ -491,14 +542,16 @@ class mgmtIntfTests( HalonTest ):
         assert 'dhcp' in output,'Test to change mode to DHCP from static Failed'
         info('### Sucussfully changed the mode from static to DHCP ###\n')
 
-        # Populate values as though populated from DHCP.
+    # Test if IP got from DHCP is set.
+    def ipv4_got_after_populated_ipv4_config(self):
+        s1 = self.net.switches[ 0 ]
         time.sleep(5)
+        # Populate values as though populated from DHCP.
         s1.cmd("ifconfig eth0 172.17.0.100 netmask 255.255.255.0")
         s1.cmd("route add default gw 172.17.0.1 eth0")
         s1.cmd("echo nameserver 1.1.1.1  > /etc/resolv.conf")
         s1.cmd("echo nameserver 2.2.2.2 >> /etc/resolv.conf")
 
-        # Test if IP got from DHCP is set.
         out = s1.cmd("ifconfig eth0")
         hostIpAddress = out.split("\n")[1].split()[1][5:]
         cnt = 15
@@ -514,7 +567,9 @@ class mgmtIntfTests( HalonTest ):
         assert hostIpAddress in output,'Test to verify IP got after changed the mode from static to dhcp Failed'
         info('### Sucussfully got the IP after changed the mode from static to dhcp ###\n')
 
-        # Test if Default gateway got from DHCP is set.
+    # Test if Default gateway got from DHCP is set.
+    def ipv4_default_gateway_got_after_populated_ipv4_config(self):
+        s1 = self.net.switches[ 0 ]
         cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
@@ -528,16 +583,17 @@ class mgmtIntfTests( HalonTest ):
         assert '172.17.0.1' in output,'Test to verify Default gateway got after changed the mode from static to dhcp Failed'
         info('### Sucussfully got Default gateway IP after changed the mode from static to dhcp ###\n')
 
-        # Test if DNS server got from DHCP is set.
+    # Test if DNS server got from DHCP is set.
+    def dns_ipv4_got_after_populated_ipv4_config(self):
+        s1 = self.net.switches[ 0 ]
         output = s1.cmd("cat /etc/resolv.conf")
         temp = re.findall("nameserver\s+.*\nnameserver\s+.*",output)
         assert temp[0] in output,'Test to verify DNS IP got after changed the mode from static to dhcp Failed'
         info('### Sucussfully got DNS IP after changed the mode from static to dhcp ###\n')
 
-    def mgmt_intf_config_commands_dhcp_ipv6(self):
-        info('\n########## Test to configure Management interface with Dhcp IPV6 ##########\n')
+    # Add Default gateway IPV6 in DHCP mode.
+    def config_default_gateway_ipv6_dhcp_mode(self):
         s1 = self.net.switches[ 0 ]
-        #Add Default gateway in DHCP mode
         s1.cmdCLI("end")
         s1.cmdCLI("configure terminal")
         s1.cmdCLI("interface mgmt")
@@ -548,7 +604,9 @@ class mgmtIntfTests( HalonTest ):
         assert '2001:db8:0:1::128' not in output,'Test to add default gateway in DHCP mode Failed'
         info('### Sucussfully verified configure of default gateway in DHCP mode ###\n')
 
-        #Add DNS Server 1 in DHCP mode
+    # Add IPV6 DNS Server 1 in DHCP mode.
+    def config_primary_ipv6_dns_dhcp_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("nameserver 2001:db8:0:1::128")
         output = s1.cmdCLI(" ")
         output = s1.cmd("echo")
@@ -556,7 +614,9 @@ class mgmtIntfTests( HalonTest ):
         assert '2001:db8:0:1::128' not in output,'Test to add Primary DNS in DHCP mode Failed'
         info('### Sucussfully verified configure of Primary DNS in DHCP mode ###\n')
 
-        #Add DNS Server 2 in DHCP mode
+    # Add IPV6 DNS Server 2 in DHCP mode.
+    def config_secondary_ipv6_dns_dhcp_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("nameserver 2001:db8:0:1::106 2001:db8:0:1::128")
         output = s1.cmdCLI(" ")
         output = s1.cmd("echo")
@@ -565,11 +625,10 @@ class mgmtIntfTests( HalonTest ):
         assert '2001:db8:0:1::128' not in output,'Test to add Secondary in DHCP mode Failed'
         info('### Sucussfully verified configure of Secondary DNS in DHCP mode ###\n')
 
-    def mgmt_intf_config_commands_static_ipv6(self):
-        info('\n########## Test to configure Management interface with static IPV6 ##########\n')
-        s1 = self.net.switches[ 0 ]
 
-        #Static IP config when mode is static
+    # Static IPV6 config when mode is static.
+    def config_ipv6_on_mgmt_intf_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("ip static 2001:db8:0:1::156/64")
         output = s1.cmdCLI(" ")
         cnt = 15
@@ -594,7 +653,9 @@ class mgmtIntfTests( HalonTest ):
         assert '2001:db8:0:1::156/64' in output,'Test to add static IP address Failed'
         info('### Sucussfully verified configure of Static IP ###\n')
 
-        #Set the IP again
+    # Set the IPV6 again.
+    def reconfig_ipv6_on_mgmt_intf_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("ip static 2001:db8:0:1::157/64")
         output = s1.cmdCLI(" ")
         cnt = 15
@@ -617,113 +678,155 @@ class mgmtIntfTests( HalonTest ):
         assert '2001:db8:0:1::157/64' in output,'Test to Reconfigure static IP address Failed'
         info('### Sucussfully verified Reconfigure of Static IP ###\n')
 
-        #Set Invalid IP on mgmt-intf
+    # Set Invalid IPV6 on mgmt-intf.
+    def config_invalid_ipv6_on_mgmt_intf(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("ip static ::")
         assert 'Unknown command' in output,'Test to configure invalid static IP address Failed'
         info('### Sucussfully verified configure of invalid static IP address ###\n')
 
-        #Test to verify Multicast IP on mgmt-intf
+    # Test to verify Multicast IPV6 on mgmt-intf.
+    def config_multicast_ipv6_on_mgmt_intf(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("ip static ff01:db8:0:1::101/64")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to configure multicast IP address in static mode Failed'
         info('### Sucussfully verified configure of multicast IP address in static mode ###\n')
 
-        #Test to verify link-local IP on mgmt-intf
+    # Test to verify link-local IPV6 on mgmt-intf.
+    def config_link_local_ipv6_on_mgmt_intf(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("ip static fe80::5484:7aff:fefe:9799/64")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to configure link-local IP address in static mode Failed'
         info('### Sucussfully verified configure of link-local IP in static mode ###\n')
 
-        #Test to verify loopback IP on mgmt-intf
+    # Test to verify loopback IPV6 on mgmt-intf
+    def config_loopback_ipv6_on_mgmt_intf(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("ip static ::1")
         assert 'Unknown command' in output,'Test to configure loopback IP address in static mode Failed'
         info('### Sucussfully verified configure of loopback IP address in static mode ###\n')
 
-        # Default gateway should be reachable. Otherwise test case will fail
-        #Add Default gateway in Static mode
+    # Default gateway should be reachable. Otherwise test case will fail.
+    # Add Default gateway in Static mode.
+    def config_ipv6_default_gateway_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("default-gateway 2001:db8:0:1::128")
         output = s1.cmdCLI(" ")
         output = s1.cmdCLI("do show running-config")
         assert 'default-gateway 2001:db8:0:1::128' in output,'Test to add default gateway in static mode Failed'
         info('### Sucussfully verified configure of default gateway in static mode ###\n')
 
-        #Add IPV4 Default gateway in static mode when IPV6 configured
+    # Add IPV4 Default gateway in static mode when IPV6 configured.
+    def config_ipv4_default_gateway_ipv6_is_set_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output = s1.cmdCLI("default-gateway 192.168.1.2")
         assert 'IP should be configured first' in output, \
                 'Test to Add IPV4 default gateway when IPV6 configured in static mode Failed'
         info('### Sucussfully verified configuration of IPV4 default gateway when IPV6 is configured in static mode ###\n')
 
-        #Add Default Invalid gateway IP in static mode
+    # Add Default Invalid gateway IPV6 in static mode.
+    def config_invalid_default_gateway_ipv6_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("default-gateway ::")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to add Invalid default gateway ip in static mode Failed'
         info('### Sucussfully verified configure of Invalid default gateway ip in static mode ###\n')
 
-        #Add Deafult  multicast gateway ip in static mode
+    # Add Deafult  multicast gateway ipv6 in static mode.
+    def config_multicast_ipv6_default_gateway_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("default-gateway ff01:db8:0:1::101")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to add default multicast gateway ip in static mode Failed'
         info('### Sucussfully verified configure of multicast gateway ip in static mode ###\n')
 
-        #Add Default link-local  gateway ip in static mode
+    # Add Default link-local  gateway ipv6 in static mode.
+    def config_default_linl_local_ipv6_gateway_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("default-gateway fe80::5484:7aff:fefe:9799")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to add default link-local gateway ip in static mode Failed'
         info('### Sucussfully verified configure of Default link-local  gateway ip in static mode ###\n')
 
-        #Add Default loopback gateway ip in static mode
+    # Add Default loopback gateway ipv6 in static mode.
+    def config_loopback_ipv6_default_gateway_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("default-gateway ::1")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to add default loopback gateway ip in static mode Failed'
         info('### Sucussfully verified configure of Default loopback gateway in static mode ###\n')
 
-        #Remove Default gateway in static mode
+    # Remove Default gateway in static mode.
+    def unconfig_ipv6_default_gateway_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("no default-gateway 2001:db8:0:1::128")
         output = s1.cmdCLI(" ")
         output = s1.cmdCLI("do show running-config")
         assert 'default-gateway 2001:db8:0:1::128' not in output,'Test to remove default gateway in static mode Failed'
         info('### Sucussfully Removed Default gateway in static mode ###\n')
 
-        #Configure an invalid IP for primary DNS
+    # Configure an invalid IPV6 for primary DNS.
+    def config_invalid_primary_ipv6_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("nameserver ::")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to configure invalid Primary DNS Failed'
         info('### Sucussfully verified configure of invalid Primary DNS static mode ###\n')
 
-        #Configure an multicast for primary DNS
+    # Configure an multicast for primary DNS.
+    def config_multicast_ipv6_primary_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("nameserver ff01:db8:0:1::101")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to Configure an multicast for primary DNS Failed'
         info('### Sucussfully verified configure of multicast primary DNS in static mode ###\n')
 
-        #Configure a link-local for primary DNS
+    # Configure a link-local for primary DNS.
+    def config_link_local_ipv6_primary_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("nameserver fe80::5484:7aff:fefe:9799")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to Configure a link-local for primary DNS Failed'
         info('### Sucussfully verified configure of link-local primary DNS in static mode ###\n')
 
-        #Configure a loopback for primary DNS
+    # Configure a loopback for primary DNS.
+    def config_loopback_primary_ipv6_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("nameserver ::1")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to Configure a loopback for primary DNS Failed'
         info('### Sucussfully verified configure of loopback primary DNS in static mode ###\n')
 
-        #Configure an invalid IP for secondary DNS
+    # Configure an invalid IP for secondary DNS.
+    def config_invalid_ipv6_secondary_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("nameserver 2001:db8:0:1::144 ::")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to Configure an invalid IP for secondary DNS Failed'
         info('### Sucussfully verified configure of invalid secondary DNS in static mode ###\n')
 
-        #Configure an multicast for secondary DNS
+    # Configure an multicast for secondary DNS.
+    def config_multicast_ipv6_secondary_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("nameserver 2001:db8:0:1::144 ff01:db8:0:1::101")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to Configure an multicast for secondary DNS Failed'
         info('### Sucussfully verified configure of multicast secondary DNS in static mode ###\n')
 
-        #Configure a link-local for secondary DNS
+    # Configure a link-local for secondary DNS.
+    def config_link_local_ipv6_secondary_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("nameserver 2001:db8:0:1::144 fe80::5484:7aff:fefe:9799")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to Configure a link-local for secondary DNS Failed'
         info('### Sucussfully verified configure of link-local secondary DNS in static mode ###\n')
 
-        #Configure a loopback for secondary DNS
+    # Configure a loopback for secondary DNS.
+    def config_loopback_ipv6_secondary_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("nameserver 2001:db8:0:1::144 ::1")
         assert 'Invalid IPv4 or IPv6 address' in output,'Test to Configure a loopback for secondary DNS Failed'
         info('### Sucussfully verified configure of loopback secondary DNS in static mode ###\n')
 
-        #Configure primary and secondary DNS as same
+    # Configure primary and secondary DNS as same.
+    def config_same_ipv6_primary_secondary_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("nameserver 2001:db8:0:1::144 2001:db8:0:1::144")
         assert 'Duplicate value entered' in output,'Test to Configure primary and secondary DNS as same Failed'
         info('### Sucussfully verified configure of same primary and secondary DNS in static mode ###\n')
 
-        #Add DNS Server 1 in static mode
+    # Add DNS Server 1 in static mode.
+    def config_primary_ipv6_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("nameserver 2001:db8:0:1::144")
         output = s1.cmdCLI(" ")
         cnt = 15
@@ -747,7 +850,9 @@ class mgmtIntfTests( HalonTest ):
         assert '2001:db8:0:1::144' in output,'Test to add Primary DNS in static mode Failed'
         info('### Sucussfully configured the Primary DNS in static mode ###\n')
 
-        #Add another DNS server 1
+    # Add another DNS server 1.
+    def reconfig_primary_ipv6_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("nameserver 2001:db8:0:1::154")
         output = s1.cmdCLI(" ")
         cnt = 15
@@ -772,7 +877,9 @@ class mgmtIntfTests( HalonTest ):
         assert '2001:db8:0:1::144' not in output,'Test to Reconfigure Primary DNS in static mode Failed'
         info('### Sucussfully Reconfigured the Primary DNS in static mode ###\n')
 
-        #Remove DNS server 1
+    # Remove DNS server 1.
+    def remove_primary_ipv6_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("no nameserver 2001:db8:0:1::154")
         cnt = 15
         while cnt:
@@ -795,7 +902,9 @@ class mgmtIntfTests( HalonTest ):
         assert '2001:db8:0:1::154' not in output,'Test to Remove Primary DNS in static mode Failed'
         info('### Sucussfully Removed Primary DNS in static mode ###\n')
 
-        #Add DNS Server 2 in static mode
+    # Add DNS Server 2 in static mode.
+    def config_secondary_ipv6_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         output=s1.cmdCLI("nameserver 2001:db8:0:1::150 2001:db8:0:1::156")
         cnt = 15
         while cnt:
@@ -820,12 +929,14 @@ class mgmtIntfTests( HalonTest ):
         assert '2001:db8:0:1::150' in output,'Test to add Secondary DNS in static mode Failed'
         info('### Sucussfully Configured Secondary DNS in static mode ###\n')
 
-        #Add another DNS server 2
+    # Add another DNS server 2.
+    def reconfig_secondary_ipv6_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("nameserver 2001:db8:0:1::150 2001:db8:0:1::154")
         cnt = 15
         while cnt:
             output_show = s1.cmdCLI("do show interface mgmt")
-            output += s1.cmdCLI(" ")
+            output = s1.cmdCLI(" ")
             if re.findall("Primary Nameserver\s+: 2001:db8:0:1::150",output_show) and \
                 re.findall("Secondary Nameserver\s+: 2001:db8:0:1::154",output_show):
                 cnt2 = 15
@@ -848,7 +959,9 @@ class mgmtIntfTests( HalonTest ):
         assert '2001:db8:0:1::154' in output,'Test to Reconfigure Secondary DNS in static mode Failed'
         info('### Sucussfully Reconfigured Secondary DNS in static mode ###\n')
 
-        #Remove DNS server 2
+    # Remove DNS server 2.
+    def unconfig_secondary_ipv6_dns_static_mode(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("no nameserver  2001:db8:0:1::150 2001:db8:0:1::154")
         cnt = 15
         while cnt:
@@ -871,7 +984,9 @@ class mgmtIntfTests( HalonTest ):
         assert '2001:db8:0:1::154' not in output,'Test to Remove Secondary DNS in static mode Failed'
         info('### Sucussfully Removed Secondary DNS in static mode ###\n')
 
-        #Change mode from static to dhcp
+    # Change mode from static to dhcp.
+    def change_mode_from_static_to_dhcp_ipv6(self):
+        s1 = self.net.switches[ 0 ]
         s1.cmdCLI("ip dhcp")
         output = s1.cmdCLI(" ")
         time.sleep(5)
@@ -886,7 +1001,9 @@ class mgmtIntfTests( HalonTest ):
         assert 'dns-server-2' not in output,'Test to change mode from static to dhcp Failed'
         info('### Sucussfully changed mode to DHCP from static ###\n')
 
-        #Populate values as though populated from DHCP
+    # Test if IPV6  got from DHCP is set.
+    def ipv6_got_after_populated_ipv6_config(self):
+        s1 = self.net.switches[ 0 ]
         time.sleep(5)
         s1.cmd("ip -6 addr add 2001:db8:0:1::150/64 dev eth0")
         s1.cmd("ip -6 route add default via 2001:db8:0:1::128")
@@ -896,7 +1013,6 @@ class mgmtIntfTests( HalonTest ):
         output = s1.cmd("ip -6 addr show dev eth0")
         output = s1.cmd("cat /etc/resolv.conf")
 
-        #Test if IP  got from DHCP is set
         cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
@@ -909,7 +1025,9 @@ class mgmtIntfTests( HalonTest ):
         assert "2001:db8:0:1::150/64" in output,'Test to verify IP got after changed the mode from static to dhcp Failed'
         info('### Sucussfully got IP after changed the mode from static to dhcp ###\n')
 
-        # Test if Default gateway got from DHCP is set
+    # Test if Default gateway got from DHCP is set.
+    def ipv6_default_gateway_got_after_populated_ipv6_config(self):
+        s1 = self.net.switches[ 0 ]
         cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
@@ -922,7 +1040,7 @@ class mgmtIntfTests( HalonTest ):
         assert "2001:db8:0:1::128" in output,'Test to verify Default gateway got after changed the mode Failed'
         info('### Sucussfully got the Default gateway after changed the mode Passed ###\n')
 
-    #Extra cleanup if test fails in middle
+    #Extra cleanup if test fails in middle.
     def mgmt_intf_cleanup(self):
         s1 = self.net.switches[ 0 ]
         output = s1.cmd("ip netns exec swns ip addr show dev 1")
@@ -949,10 +1067,217 @@ class Test_mgmt_intf:
         del self.test
 
     # mgmt intf tests.
-    def test_mgmt_intf_config_commands_ipv4(self):
-        self.test.mgmt_intf_config_commands_dhcp_ipv4()
-        self.test.mgmt_intf_config_commands_static_ipv4()
+    def test_dhclient_started_on_mgmt_intf_ipv4(self):
+        info('\n########## Test to configure Management interface with DHCP IPV4 ##########\n')
+        #dhclient binary not running in docker image.
+        #So disabling this testcase,Will be enabling after fixing dhclient issue.
+        '''
+        self.test.dhclient_started_on_mgmt_intf_ipv4()
+        '''
 
-    def test_mgmt_intf_config_commands_ipv6(self):
-        self.test.mgmt_intf_config_commands_dhcp_ipv6()
-        self.test.mgmt_intf_config_commands_static_ipv6()
+    def test_mgmt_intf_updated_during_bootup(self):
+        self.test.mgmt_intf_updated_during_bootup()
+
+    def test_mgmt_intf_context_enter(self):
+        self.test.mgmt_intf_context_enter()
+
+    def test_dhcp_mode_set_on_mgmt_intf(self):
+        self.test.dhcp_mode_set_on_mgmt_intf()
+
+    def test_config_default_gateway_ipv4_dhcp_mode(self):
+        self.test.config_default_gateway_ipv4_dhcp_mode()
+
+    def test_config_primary_ipv4_dns_dhcp_mode(self):
+        self.test.config_primary_ipv4_dns_dhcp_mode()
+
+    def test_config_secondary_ipv4_dns_dhcp_mode(self):
+        self.test.config_secondary_ipv4_dns_dhcp_mode()
+
+    def test_config_ipv4_on_mgmt_intf_static_mode(self):
+        info('\n########## Test to configure Management interface with static IPV4 ##########\n')
+        self.test.config_ipv4_on_mgmt_intf_static_mode()
+
+    def test_reconfig_ipv4_on_mgmt_intf_static_mode(self):
+        self.test.reconfig_ipv4_on_mgmt_intf_static_mode()
+
+    def test_config_ipv4_default_gateway_static_mode(self):
+        self.test.config_ipv4_default_gateway_static_mode()
+
+    def test_unconfig_ipv4_default_gateway_static_mode(self):
+        self.test.unconfig_ipv4_default_gateway_static_mode()
+
+    def test_config_ipv6_default_gateway_ipv4_is_set_static_mode(self):
+        self.test.config_ipv6_default_gateway_ipv4_is_set_static_mode()
+
+    def test_config_primary_ipv4_dns_static_mode(self):
+        self.test.config_primary_ipv4_dns_static_mode()
+
+    def test_reconfig_primary_ipv4_dns_static_mode(self):
+        self.test.reconfig_primary_ipv4_dns_static_mode()
+
+    def test_remove_primary_ipv4_dns_static_mode(self):
+        self.test.remove_primary_ipv4_dns_static_mode()
+
+    def test_config_secondary_ipv4_dns_static_mode(self):
+        self.test.config_secondary_ipv4_dns_static_mode()
+
+    def test_reconfig_secondary_ipv4_dns_static_mode(self):
+        self.test.reconfig_secondary_ipv4_dns_static_mode()
+
+    def test_unconfig_secondary_ipv4_dns_static_mode(self):
+        self.test.unconfig_secondary_ipv4_dns_static_mode()
+
+    def test_config_invalid_ipv4_on_mgmt_intf(self):
+        self.test.config_invalid_ipv4_on_mgmt_intf()
+
+    def test_config_multicast_ipv4_on_mgmt_intf(self):
+        self.test.config_multicast_ipv4_on_mgmt_intf()
+
+    def test_config_broadcast_ipv4_on_mgmt_intf(self):
+        self.test.config_broadcast_ipv4_on_mgmt_intf()
+
+    def test_config_loopback_ipv4_on_mgmt_intf(self):
+        self.test.config_loopback_ipv4_on_mgmt_intf()
+
+    def test_config_invalid_default_gateway_ipv4_static_mode(self):
+        self.test.config_invalid_default_gateway_ipv4_static_mode()
+
+    def test_config_multicast_ipv4_default_gateway_static_mode(self):
+        self.test.config_multicast_ipv4_default_gateway_static_mode()
+
+    def test_config_broadcast_ipv4_default_gateway_static_mode(self):
+        self.test.config_broadcast_ipv4_default_gateway_static_mode()
+
+    def test_config_loopback_ipv4_default_gateway_static_mode(self):
+        self.test.config_loopback_ipv4_default_gateway_static_mode()
+
+    def test_config_invalid_primary_ipv4_dns_static_mode(self):
+        self.test.config_invalid_primary_ipv4_dns_static_mode()
+
+    def test_config_multicast_ipv4_primary_dns_static_mode(self):
+        self.test.config_multicast_ipv4_primary_dns_static_mode()
+
+    def test_config_broadcast_ipv4_primary_dns_static_mode(self):
+        self.test.config_broadcast_ipv4_primary_dns_static_mode()
+
+    def test_config_loopback_primary_ipv4_dns_static_mode(self):
+        self.test.config_loopback_primary_ipv4_dns_static_mode()
+
+    def test_config_invalid_ipv4_secondary_dns_static_mode(self):
+        self.test.config_invalid_ipv4_secondary_dns_static_mode()
+
+    def test_change_mode_from_static_to_dhcp_ipv4(self):
+        self.test.change_mode_from_static_to_dhcp_ipv4()
+
+    def test_ipv4_got_after_populated_ipv4_config(self):
+        self.test.ipv4_got_after_populated_ipv4_config()
+
+    def test_ipv4_default_gateway_got_after_populated_ipv4_config(self):
+        self.test.ipv4_default_gateway_got_after_populated_ipv4_config()
+
+    def test_dns_ipv4_got_after_populated_ipv4_config(self):
+        self.test.dns_ipv4_got_after_populated_ipv4_config()
+
+    def test_config_default_gateway_ipv6_dhcp_mode(self):
+        info('\n########## Test to configure Management interface with Dhcp IPV6 ##########\n')
+        self.test.config_default_gateway_ipv6_dhcp_mode()
+
+    def test_config_primary_ipv6_dns_dhcp_mode(self):
+        self.test.config_primary_ipv6_dns_dhcp_mode()
+
+    def test_config_secondary_ipv6_dns_dhcp_mode(self):
+        self.test.config_secondary_ipv6_dns_dhcp_mode()
+
+    def test_config_ipv6_on_mgmt_intf_static_mode(self):
+        info('\n########## Test to configure Management interface with static IPV6 ##########\n')
+        self.test.config_ipv6_on_mgmt_intf_static_mode()
+
+    def test_reconfig_ipv6_on_mgmt_intf_static_mode(self):
+        self.test.reconfig_ipv6_on_mgmt_intf_static_mode()
+
+    def test_config_invalid_ipv6_on_mgmt_intf(self):
+        self.test.config_invalid_ipv6_on_mgmt_intf()
+
+    def test_config_multicast_ipv6_on_mgmt_intf(self):
+        self.test.config_multicast_ipv6_on_mgmt_intf()
+
+    def test_config_link_local_ipv6_on_mgmt_intf(self):
+        self.test.config_link_local_ipv6_on_mgmt_intf()
+
+    def test_config_loopback_ipv6_on_mgmt_intf(self):
+        self.test.config_loopback_ipv6_on_mgmt_intf()
+
+    def test_config_ipv6_default_gateway_static_mode(self):
+        self.test.config_ipv6_default_gateway_static_mode()
+
+    def test_config_ipv4_default_gateway_ipv6_is_set_static_mode(self):
+        self.test.config_ipv4_default_gateway_ipv6_is_set_static_mode()
+
+    def test_config_invalid_default_gateway_ipv6_static_mode(self):
+        self.test.config_invalid_default_gateway_ipv6_static_mode()
+
+    def test_config_multicast_ipv6_default_gateway_static_mode(self):
+        self.test.config_multicast_ipv6_default_gateway_static_mode()
+
+    def test_config_default_linl_local_ipv6_gateway_static_mode(self):
+        self.test.config_default_linl_local_ipv6_gateway_static_mode()
+
+    def test_config_loopback_ipv6_default_gateway_static_mode(self):
+        self.test.config_loopback_ipv6_default_gateway_static_mode()
+
+    def test_unconfig_ipv6_default_gateway_static_mode(self):
+        self.test.unconfig_ipv6_default_gateway_static_mode()
+
+    def test_config_invalid_primary_ipv6_dns_static_mode(self):
+        self.test.config_invalid_primary_ipv6_dns_static_mode()
+
+    def test_config_multicast_ipv6_primary_dns_static_mode(self):
+        self.test.config_multicast_ipv6_primary_dns_static_mode()
+
+    def test_config_link_local_ipv6_primary_dns_static_mode(self):
+        self.test.config_link_local_ipv6_primary_dns_static_mode()
+
+    def test_config_loopback_primary_ipv6_dns_static_mode(self):
+        self.test.config_loopback_primary_ipv6_dns_static_mode()
+
+    def test_config_invalid_ipv6_secondary_dns_static_mode(self):
+        self.test.config_invalid_ipv6_secondary_dns_static_mode()
+
+    def test_config_multicast_ipv6_secondary_dns_static_mode(self):
+        self.test.config_multicast_ipv6_secondary_dns_static_mode()
+
+    def test_config_link_local_ipv6_secondary_dns_static_mode(self):
+        self.test.config_link_local_ipv6_secondary_dns_static_mode()
+
+    def test_config_loopback_ipv6_secondary_dns_static_mode(self):
+        self.test.config_loopback_ipv6_secondary_dns_static_mode()
+
+    def test_config_same_ipv6_primary_secondary_dns_static_mode(self):
+        self.test.config_same_ipv6_primary_secondary_dns_static_mode()
+
+    def test_config_primary_ipv6_dns_static_mode(self):
+        self.test.config_primary_ipv6_dns_static_mode()
+
+    def test_reconfig_primary_ipv6_dns_static_mode(self):
+        self.test.reconfig_primary_ipv6_dns_static_mode()
+
+    def test_remove_primary_ipv6_dns_static_mode(self):
+        self.test.remove_primary_ipv6_dns_static_mode()
+
+    def test_config_secondary_ipv6_dns_static_mode(self):
+        self.test.config_secondary_ipv6_dns_static_mode()
+
+    def test_reconfig_secondary_ipv6_dns_static_mode(self):
+        self.test.reconfig_secondary_ipv6_dns_static_mode()
+
+    def test_unconfig_secondary_ipv6_dns_static_mode(self):
+        self.test.unconfig_secondary_ipv6_dns_static_mode()
+
+    def test_change_mode_from_static_to_dhcp_ipv6(self):
+        self.test.change_mode_from_static_to_dhcp_ipv6()
+
+    def test_ipv6_got_after_populated_ipv6_config(self):
+        self.test.ipv6_got_after_populated_ipv6_config()
+
+    def test_ipv6_default_gateway_got_after_populated_ipv6_config(self):
+        self.test.ipv6_default_gateway_got_after_populated_ipv6_config()
