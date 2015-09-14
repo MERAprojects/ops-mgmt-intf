@@ -402,6 +402,50 @@ Testcase result is success if DNS IPV4 address is present in show interface mgmt
 #### Test Fail Criteria ####
 Testcase result is fail if DNS IPV4 address is not present in show interface mgmt output or /etc/resolv.conf file.
 
+### Test case 2.28 - Verify static IPV4 address is removed and mode is changed to DHCP ###
+#### Description ####
+Test whether the configured static IPV4 address is removed and mode is changed to DHCP.
+### Test Result Criteria ###
+#### Test Pass Criteria ####
+Testcase result is success if static IPV4 address is removed and got new IPV4/IPV6 address after mode is changed to DHCP.
+#### Test Fail Criteria ####
+Testcse result is fail if static IPV4 address is present in "show interface mgmt" output or mode is not changed to DHCP.
+
+### Test case 2.29 - Verify static IPV4 address is removed if IPV6 address is configured and mode is static ###
+#### Description ####
+Test whether static IPV4 address is removed if IPV6 address is configured and mode is static.
+### Test Result Criteria ###
+#### Test Pass Criteria ####
+Testcase result is success if static IPV4 address is removed, IPV6 address and static mode is present in show interface mgmt output.
+#### Test Fail Criteria ####
+Testcase result is fail if static IPV4 address is present in "show interface mgmt" output.
+
+### Test case 2.30 - Verify static IPV4 address is removable if default gateway IPV4 address is configured ###
+#### Description ####
+Test whether static IPV4 address is removable if default gateway IPV4 address is configured.
+### Test Result Criteria ###
+#### Test Pass Criteria ####
+Testcase result is success if IPV4 address is present in "show interface mgmt" and ifconfig output.
+#### Test Fail Criteria ####
+Testcase result is fail if IPV4 address is not present in "show interface mgmt" or ifconfig output.
+
+### Test case 2.31 - Verify static IPV4 address is removable if IPV4 nameserver address is configured ###
+#### Description ####
+Test whether static IPV4 address is removable if IPV4 nameserver address is configured.
+### Test Result Criteria ###
+#### Test Pass Criteria ####
+Testcase result is success if IPV4 address is present in "show interface mgmt" and ifconfig output.
+#### Test Fail Criteria ####
+Testcase result is fail if IPV4 address is not present in "show interface mgmt" or ifconfig output.
+
+### Test case 2.32 - Verify static IPV4 address is removable if IPV4 & IPV6 nameserver address is configured ###
+#### Description ####
+Test whether static IPV4 address is removable if IPV4 and IPV6 nameserver address is configured.
+#### Test Pass Criteria ####
+Testcase result is success if IPV4 address is present in "show interface mgmt" and ifconfig output.
+#### Test Fail Criteria ####
+Testcase result is fail if IPV4 address is not present in "show interface mgmt" or ifconfig output.
+
 
 ##  Test cases to verify management interface configuration in IPV6 DHCP mode ##
 
@@ -785,3 +829,46 @@ Testcase result is success if default gateway IPV6 is present in show interface 
 #### Test Fail Criteria ####
 Testcase result is fail if default gateway IPV6 is not present in show interface mgmt output.
 
+### Test case 4.30 - Verify static IPV6 address is removed and mode is changed to DHCP ###
+#### Description ####
+Test whether the configured static IPV6 address is removed and mode is changed to DHCP.
+### Test Result Criteria ###
+#### Test Pass Criteria ####
+Testcase result is success if static IPV6 address is removed and got new IPV4/IPV6 address after mode is changed to DHCP.
+#### Test Fail Criteria ####
+Testcse result is fail if static IPV6 address is present in "show interface mgmt" output or mode is not changed into DHCP.
+
+### Test case 4.31 - Verify static IPV6 address is removed if IPV4 address is configured and mode is in static ###
+#### Description ####
+Test whether static IPV6 address is removed if IPV4 address is configured and mode is in static.
+### Test Result Criteria ###
+#### Test Pass Criteria ####
+Testcase result is success if static IPV6 address is removed, IPV4 address and static mode is present in show interface mgmt output.
+#### Test Fail Criteria ####
+Testcase result is fail if static IPV6 address is present in "show interface mgmt" output.
+
+### Test case 4.32 - Verify static IPV6 address is removable if default gateway IPV6 address is configured ###
+#### Description ####
+Test whether static IPV6 address is removable if default gateway IPV6 address is configured.
+### Test Result Criteria ###
+#### Test Pass Criteria ####
+Testcase result is success if IPV6 address is present in "show interface mgmt" and "ip -6 addr show dev eth0" output.
+#### Test Fail Criteria ####
+Testcase result is fail if IPV6 address is not present in "show interface mgmt" or "ip -6 addr show dev eth0" output.
+
+### Test case 4.33 - Verify static IPV6 address is removable if IPV6 nameserver address is configured ###
+#### Description ####
+Test whether static IPV6 address is removable if IPV6 nameserver address is configured.
+### Test Result Criteria ###
+#### Test Pass Criteria ####
+Testcase result is success if IPV6 address is present in "show interface mgmt" and "ip -6 addr show dev eth0" output.
+#### Test Fail Criteria ####
+Testcase result is fail if IPV6 address is not present in "show interface mgmt" or "ip -6 addr show dev eth0" output.
+
+### Test case 4.32 - Verify static IPV6 address is removable if IPV4 & IPV6 nameserver address is configured ###
+#### Description ####
+Test whether static IPV6 address is removable if IPV4 and IPV6 nameserver address is configured.
+#### Test Pass Criteria ####
+Testcase result is success if IPV6 address is present in "show interface mgmt"  and "ip -6 addr show dev eth0" output.
+#### Test Fail Criteria ####
+Testcase result is fail if IPV6 address is not present in "show interface mgmt" or "ip -6 addr show dev eth0" output.
