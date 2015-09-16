@@ -44,7 +44,7 @@ from pyroute2.netlink.rtnl import RTM_GETLINK
 from pyroute2.netlink.rtnl import RTM_DELLINK
 
 RECV_BUFFER = 4096
-OPEN_VSWITCH_TABLE = "Open_vSwitch"
+SYSTEM_TABLE = "System"
 DNS_FILE = "/etc/resolv.conf"
 DEFAULT_DNS_1 = '8.8.4.4'
 DEFAULT_DNS_2 = '8.8.8.8'
@@ -327,7 +327,7 @@ def mgmt_intf_clear_static_val(mgmt_intf):
 def mgmt_intf_clear_status_col(idl):
 
     ovs_rec = {}
-    for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+    for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
         if ovs_rec.mgmt_intf_status:
             break
 
@@ -702,13 +702,13 @@ def mgmt_intf_cfg_update(idl):
     status_col_updt_reqd = False
 
     # Retrieve the data from status table
-    for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+    for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
         if ovs_rec.mgmt_intf_status:
             status_data = ovs_rec.mgmt_intf_status
             break
 
     # Retrieve the mode and interface from config table
-    for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+    for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
         if ovs_rec.mgmt_intf:
             mgmt_intf = ovs_rec.mgmt_intf.get(MGMT_INTF_KEY_NAME,
                                               MGMT_INTF_NULL_VAL)
@@ -1045,7 +1045,7 @@ def mgmt_intf_update_dhcp_param(idl):
     mgmt_intf = MGMT_INTF_NULL_VAL
 
     # Retrieve the mode and interface from config table
-    for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+    for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
         if ovs_rec.mgmt_intf:
             mgmt_intf = ovs_rec.mgmt_intf.get(MGMT_INTF_KEY_NAME,
                                               MGMT_INTF_NULL_VAL)
@@ -1065,7 +1065,7 @@ def mgmt_intf_update_dhcp_param(idl):
 
     status_data = {}
     # Get the cuurent values from status column
-    for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+    for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
         if ovs_rec.mgmt_intf_status:
             status_data = ovs_rec.mgmt_intf_status
             ipv6_link_local = status_data.get(MGMT_INTF_KEY_IPV6_LINK_LOCAL,
@@ -1174,7 +1174,7 @@ def mgmt_intf_update_dhcp_param(idl):
     if is_updt:
         txn = ovs.db.idl.Transaction(idl)
 
-        for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+        for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
             if ovs_rec.mgmt_intf:
                 break
 
@@ -1193,7 +1193,7 @@ def mgmt_intf_update_dhcp_param_ipv6(idl):
     mgmt_intf = MGMT_INTF_NULL_VAL
 
     # Retrieve the mode and interface from config table
-    for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+    for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
         if ovs_rec.mgmt_intf:
             mgmt_intf = ovs_rec.mgmt_intf.get(MGMT_INTF_KEY_NAME,
                                               MGMT_INTF_NULL_VAL)
@@ -1212,7 +1212,7 @@ def mgmt_intf_update_dhcp_param_ipv6(idl):
 
     status_data = {}
     # Get the cuurent values from status column
-    for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+    for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
         if ovs_rec.mgmt_intf_status:
             status_data = ovs_rec.mgmt_intf_status
 
@@ -1272,7 +1272,7 @@ def mgmt_intf_update_dhcp_param_ipv6(idl):
     if is_updt:
         txn = ovs.db.idl.Transaction(idl)
 
-        for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+        for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
                 data = ovs_rec.mgmt_intf_status
                 break
 
@@ -1299,7 +1299,7 @@ def mgmt_intf_update_ipv6_linklocal(idl):
 
     status_data = {}
     # Get the cuurent values from status column
-    for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+    for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
         if ovs_rec.mgmt_intf_status:
             status_data = ovs_rec.mgmt_intf_status
         if ovs_rec.mgmt_intf:
@@ -1349,7 +1349,7 @@ def mgmt_intf_update_ipv6_linklocal(idl):
     if is_updt:
         txn = ovs.db.idl.Transaction(idl)
 
-        for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+        for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
                 data = ovs_rec.mgmt_intf_status
                 break
 
@@ -1383,7 +1383,7 @@ def mgmt_intf_address_delete_hdlr(idl, ipv6_link_local, link_state):
 
     if updt_status:
 
-        for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+        for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
             if ovs_rec.mgmt_intf_status:
                 break
 
@@ -1406,7 +1406,7 @@ def mgmt_intf_address_delete_hdlr(idl, ipv6_link_local, link_state):
 def mgmt_intf_update_link_state(idl, state):
     status_data = {}
 
-    for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+    for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
         if ovs_rec.mgmt_intf_status:
             status_data = ovs_rec.mgmt_intf_status
             break
@@ -1432,7 +1432,7 @@ def mgmt_intf_up_down_event_handler(idl, ifname, event, msg_type):
     status_data = {}
 
     # Get the current values from status column.
-    for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+    for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
         if ovs_rec.mgmt_intf_status:
             status_data = ovs_rec.mgmt_intf_status
         if ovs_rec.mgmt_intf:
@@ -1503,7 +1503,7 @@ def get_mgmt_interface_name(idl):
     # In that case retrieve the management interface from ovsdb.
     if mgmt_interface_name == MGMT_INTF_NULL_VAL:
         # Get the current values from status column
-        for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+        for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
             if ovs_rec.mgmt_intf:
                 mgmt_interface_name = ovs_rec.mgmt_intf.get(MGMT_INTF_KEY_NAME,
                                                             MGMT_INTF_NULL_VAL)
@@ -1564,7 +1564,7 @@ def wait_for_config_complete(idl):
 
     system_is_configured = 0
     while system_is_configured == 0:
-        for ovs_rec in idl.tables[OPEN_VSWITCH_TABLE].rows.itervalues():
+        for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
             if ovs_rec.cur_cfg is not None and ovs_rec.cur_cfg != 0:
                 system_is_configured = ovs_rec.cur_cfg
                 break
@@ -1595,9 +1595,9 @@ def main():
         remote = args.database
 
     schema_helper = ovs.db.idl.SchemaHelper(location=OVS_SCHEMA)
-    schema_helper.register_columns(OPEN_VSWITCH_TABLE, ["cur_cfg"])
-    schema_helper.register_columns(OPEN_VSWITCH_TABLE, ["mgmt_intf"])
-    schema_helper.register_columns(OPEN_VSWITCH_TABLE, ["mgmt_intf_status"])
+    schema_helper.register_columns(SYSTEM_TABLE, ["cur_cfg"])
+    schema_helper.register_columns(SYSTEM_TABLE, ["mgmt_intf"])
+    schema_helper.register_columns(SYSTEM_TABLE, ["mgmt_intf_status"])
 
     idl = ovs.db.idl.Idl(remote, schema_helper)
 

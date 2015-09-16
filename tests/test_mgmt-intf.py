@@ -81,7 +81,7 @@ class mgmtIntfTests(OpsVsiTest):
     # Mgmt Interface updated during bootup.
     def mgmt_intf_updated_during_bootup(self):
         s1 = self.net.switches[0]
-        output = s1.cmd("ovs-vsctl list open_vswitch")
+        output = s1.cmd("ovs-vsctl list system")
         output += s1.cmd("echo")
         assert 'name="eth0"' in output, "Test to mgmt interface has "\
             " updated from image.manifest file failed"
@@ -1142,7 +1142,7 @@ class mgmtIntfTests(OpsVsiTest):
         output += s1.cmdCLI(" ")
         assert 'dhcp' in output,\
             'Test to change mode from static to dhcp failed'
-        output = s1.cmd("ovs-vsctl list open_vswitch")
+        output = s1.cmd("ovs-vsctl list system")
         output += s1.cmd("echo")
         assert 'ipv6-linklocal' in output,\
             'Test to change mode from static to dhcp failed'
