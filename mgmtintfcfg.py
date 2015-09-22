@@ -75,6 +75,8 @@ MGMT_INTF_KEY_IPV6 = "ipv6"
 MGMT_INTF_KEY_DEF_GW_V6 = "default_gateway_v6"
 MGMT_INTF_KEY_IPV6_LINK_LOCAL = "ipv6_linklocal"
 MGMT_INTF_KEY_LINK_STATE = "link_state"
+MGMT_INTF_KEY_HOSTNAME = "hostname"
+MGMT_INTF_DEFAULT_HOSTNAME = "switch"
 
 AF_INET = 2
 RT_TABLE_MAIN = 254
@@ -700,12 +702,23 @@ def mgmt_intf_cfg_update(idl):
 
     status_data = {}
     status_col_updt_reqd = False
+    hostname = MGMT_INTF_DEFAULT_HOSTNAME
 
     # Retrieve the data from status table
     for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
+        if ovs_rec.hostname:
+            hostname = ovs_rec.hostname
         if ovs_rec.mgmt_intf_status:
             status_data = ovs_rec.mgmt_intf_status
-            break
+
+    status_hostname = status_data.get(MGMT_INTF_KEY_HOSTNAME,
+                                     MGMT_INTF_NULL_VAL)
+
+    # Set hostname status to value updated by CLI
+    if hostname != status_hostname:
+        status_data[MGMT_INTF_KEY_HOSTNAME] = hostname
+        status_col_updt_reqd = True
+        os.system("hostname " + hostname)
 
     # Retrieve the mode and interface from config table
     for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
@@ -730,6 +743,9 @@ def mgmt_intf_cfg_update(idl):
                         link_state = \
                             status_data.get(MGMT_INTF_KEY_LINK_STATE,
                                             MGMT_INTF_NULL_VAL)
+                        hostname = \
+                            status_data.get(MGMT_INTF_KEY_HOSTNAME,
+                                            MGMT_INTF_NULL_VAL)
                         mgmt_intf_clear_ipv6_param(mgmt_intf,
                                                    status_data.get(
                                                        MGMT_INTF_KEY_DEF_GW_V6,
@@ -741,9 +757,15 @@ def mgmt_intf_cfg_update(idl):
                             status_data[MGMT_INTF_KEY_IPV6_LINK_LOCAL] = \
                                 ipv6_link_local
                             status_col_updt_reqd = True
+
                         if link_state != MGMT_INTF_NULL_VAL:
                             status_data[MGMT_INTF_KEY_LINK_STATE] = \
                                 link_state
+                            status_col_updt_reqd = True
+
+                        if hostname != MGMT_INTF_NULL_VAL:
+                            status_data[MGMT_INTF_KEY_HOSTNAME] = \
+                                hostname
                             status_col_updt_reqd = True
                     else:
                         # Mode is DHCP
@@ -755,6 +777,10 @@ def mgmt_intf_cfg_update(idl):
                         link_state = \
                             status_data.get(MGMT_INTF_KEY_LINK_STATE,
                                             MGMT_INTF_NULL_VAL)
+                        hostname = \
+                            status_data.get(MGMT_INTF_KEY_HOSTNAME,
+                                            MGMT_INTF_NULL_VAL)
+
                         mgmt_intf_clear_ipv6_param(mgmt_intf,
                                                    status_data.get(
                                                        MGMT_INTF_KEY_DEF_GW_V6,
@@ -766,9 +792,15 @@ def mgmt_intf_cfg_update(idl):
                             status_data[MGMT_INTF_KEY_IPV6_LINK_LOCAL] = \
                                 ipv6_link_local
                             status_col_updt_reqd = True
+
                         if link_state != MGMT_INTF_NULL_VAL:
                             status_data[MGMT_INTF_KEY_LINK_STATE] = \
                                 link_state
+                            status_col_updt_reqd = True
+
+                        if hostname != MGMT_INTF_NULL_VAL:
+                            status_data[MGMT_INTF_KEY_HOSTNAME] = \
+                                hostname
                             status_col_updt_reqd = True
                     mode_val = value
         else:
@@ -1039,6 +1071,26 @@ def mgmt_intf_cfg_update(idl):
     return True
 
 
+def mgmt_intf_get_status(idl):
+
+    ipv6_link_local = DEFAULT_IPV6
+    link_state = MGMT_INTF_NULL_VAL
+    hostname = MGMT_INTF_NULL_VAL
+
+    # Get the cuurent values from status column
+    for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
+        if ovs_rec.mgmt_intf_status:
+            status_data = ovs_rec.mgmt_intf_status
+            ipv6_link_local = status_data.get(MGMT_INTF_KEY_IPV6_LINK_LOCAL,
+                                              DEFAULT_IPV6)
+            link_state = status_data.get(MGMT_INTF_KEY_LINK_STATE,
+                                         MGMT_INTF_NULL_VAL)
+            hostname = status_data.get(MGMT_INTF_KEY_HOSTNAME,
+                                       MGMT_INTF_NULL_VAL)
+
+    return (ipv6_link_local, link_state, hostname)
+
+
 # Function to update the values populated by DHCP client to ovsdb.
 def mgmt_intf_update_dhcp_param(idl):
 
@@ -1064,19 +1116,20 @@ def mgmt_intf_update_dhcp_param(idl):
     is_updt = False
 
     status_data = {}
-    # Get the cuurent values from status column
+    # Get the current values from status column
     for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
         if ovs_rec.mgmt_intf_status:
             status_data = ovs_rec.mgmt_intf_status
-            ipv6_link_local = status_data.get(MGMT_INTF_KEY_IPV6_LINK_LOCAL,
-                                              DEFAULT_IPV6)
-            if ipv6_link_local != DEFAULT_IPV6:
-                data[MGMT_INTF_KEY_IPV6_LINK_LOCAL] = ipv6_link_local
 
-            link_state = status_data.get(MGMT_INTF_KEY_LINK_STATE,
-                                         MGMT_INTF_NULL_VAL)
-            if link_state != MGMT_INTF_NULL_VAL:
-                data[MGMT_INTF_KEY_LINK_STATE] = link_state
+    ipv6_link_local, link_state, hostname = mgmt_intf_get_status(idl)
+    if ipv6_link_local != DEFAULT_IPV6:
+        data[MGMT_INTF_KEY_IPV6_LINK_LOCAL] = ipv6_link_local
+
+    if link_state != MGMT_INTF_NULL_VAL:
+        data[MGMT_INTF_KEY_LINK_STATE] = link_state
+
+    if hostname != MGMT_INTF_NULL_VAL:
+        data[MGMT_INTF_KEY_HOSTNAME] = hostname
 
     try:
         ipr = IPRoute()
@@ -1366,7 +1419,7 @@ def mgmt_intf_update_ipv6_linklocal(idl):
 
 
 # Function to clear values when address delete message is received.
-def mgmt_intf_address_delete_hdlr(idl, ipv6_link_local, link_state):
+def mgmt_intf_address_delete_hdlr(idl, ipv6_link_local, link_state, hostname):
     status_data = {}
     updt_status = False
 
@@ -1379,6 +1432,10 @@ def mgmt_intf_address_delete_hdlr(idl, ipv6_link_local, link_state):
 
     if link_state != MGMT_INTF_NULL_VAL:
         status_data[MGMT_INTF_KEY_LINK_STATE] = link_state
+        updt_status = True
+
+    if hostname != MGMT_INTF_NULL_VAL:
+        status_data[MGMT_INTF_KEY_HOSTNAME] = hostname
         updt_status = True
 
     if updt_status:
@@ -1457,6 +1514,10 @@ def mgmt_intf_up_down_event_handler(idl, ifname, event, msg_type):
         mgmt_intf_clear_ipv6_param(mgmt_intf,
                                    status_data.get(MGMT_INTF_KEY_DEF_GW_V6,
                                                    DEFAULT_IPV6))
+        mgmt_intf_address_delete_hdlr(
+            idl, status_data.get(MGMT_INTF_KEY_IPV6_LINK_LOCAL,
+                                 DEFAULT_IPV6), event,
+            status_data.get(MGMT_INTF_KEY_HOSTNAME, MGMT_INTF_NULL_VAL))
     elif (event == 'UP') or (msg_type == RTM_NEWLINK):
         mgmt_intf_start_dhcp_client(idl)
 
@@ -1467,7 +1528,8 @@ def mgmt_intf_up_down_event_handler(idl, ifname, event, msg_type):
     elif (msg_type == RTM_DELADDR):
         mgmt_intf_address_delete_hdlr(
             idl, status_data.get(MGMT_INTF_KEY_IPV6_LINK_LOCAL, DEFAULT_IPV6),
-            status_data.get(MGMT_INTF_KEY_LINK_STATE, MGMT_INTF_NULL_VAL))
+            status_data.get(MGMT_INTF_KEY_LINK_STATE, MGMT_INTF_NULL_VAL),
+            status_data.get(MGMT_INTF_KEY_HOSTNAME, MGMT_INTF_NULL_VAL))
 
 
 # Netlink event handler.
@@ -1598,6 +1660,7 @@ def main():
     schema_helper.register_columns(SYSTEM_TABLE, ["cur_cfg"])
     schema_helper.register_columns(SYSTEM_TABLE, ["mgmt_intf"])
     schema_helper.register_columns(SYSTEM_TABLE, ["mgmt_intf_status"])
+    schema_helper.register_columns(SYSTEM_TABLE, ["hostname"])
 
     idl = ovs.db.idl.Idl(remote, schema_helper)
 
