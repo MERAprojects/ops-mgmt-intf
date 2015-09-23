@@ -16,10 +16,10 @@
 
 from setuptools import setup
 setup(
-    name='mgmtintfcfg',
+    name='ops_mgmtintfcfg',
     version='1.0',
-    py_modules=['mgmtintfcfg'],
+    py_modules=['ops_mgmtintfcfg'],
     entry_points={
-        'console_scripts': ['mgmtintfcfg = mgmtintfcfg:main',]
+        'console_scripts': ['ops_mgmtintfcfg = ops_mgmtintfcfg:main',]
     }
 )

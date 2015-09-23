@@ -712,7 +712,7 @@ def mgmt_intf_cfg_update(idl):
             status_data = ovs_rec.mgmt_intf_status
 
     status_hostname = status_data.get(MGMT_INTF_KEY_HOSTNAME,
-                                     MGMT_INTF_NULL_VAL)
+                                      MGMT_INTF_NULL_VAL)
 
     # Set hostname status to value updated by CLI
     if hostname != status_hostname:
@@ -1139,9 +1139,6 @@ def mgmt_intf_update_dhcp_param(idl):
                                                   family=AF_INET)]
             if not dhcp_ip_list:
                 # Mode is DHCP but no IP.
-                # Resolved might write back the default values.
-                # So flush the DNS file.
-                mgmt_intf_clear_dns_fallback()
                 ipr.close()
                 return True
 
@@ -1156,9 +1153,7 @@ def mgmt_intf_update_dhcp_param(idl):
                                     for x in ipr.get_addr(label=mgmt_intf,
                                                           family=AF_INET)]
                 if not dhcp_prefix_list:
-                # Mode is DHCP but no IP. Resolved might write back
-                # the default values. So flush the DNS file.
-                    mgmt_intf_clear_dns_fallback()
+                # Mode is DHCP but no IP.
                     ipr.close()
                     return True
 
@@ -1190,10 +1185,6 @@ def mgmt_intf_update_dhcp_param(idl):
     try:
         start = 0
         end = 0
-
-        # If no DNS address then resolved writes default values.
-        # So flush out these default values if present.
-        mgmt_intf_clear_dns_fallback()
 
         fd = open(DNS_FILE, 'r')
         output = fd.read()
@@ -1456,8 +1447,6 @@ def mgmt_intf_address_delete_hdlr(idl, ipv6_link_local, link_state, hostname):
             vlog.err("Updating status column failed in address delete "
                      "with status %s" % (status))
 
-    mgmt_intf_clear_dns_fallback()
-
 
 # Function to update the state on the mgmt interface physical link.
 def mgmt_intf_update_link_state(idl, state):
@@ -1584,28 +1573,12 @@ def terminate():
     return True
 
 
-def mgmt_intf_clear_dns_fallback():
-    try:
-        start = 0
-        end = 0
-
-        fd = open(DNS_FILE, 'r')
-        output = fd.read()
-        fd.close()
-        # If no DNS address then resolved writes default values.
-        # So flush out these default values.
-        if DEFAULT_DNS_1 in output or DEFAULT_DNS_2 in output:
-            mgmt_intf_clear_dns_conf()
-    except IOError:
-        vlog.err("File operation failed for file " + DNS_FILE)
-
-
 # Function to initialize dhcp parameters to ovsdb and start the dhclient.
 def mgmt_intf_dhcp_initialize(idl):
     # Start the DHCP client. It is ok if it fails to start here,
     # since depending on the mode we might restart it again.
-    mgmt_intf_clear_dns_fallback()
     mgmt_intf_start_dhcp_client(idl)
+    mgmt_intf_cfg_update(idl)
     mgmt_intf_update_dhcp_param(idl)
     mgmt_intf_update_dhcp_param_ipv6(idl)
     mgmt_intf_update_ipv6_linklocal(idl)
