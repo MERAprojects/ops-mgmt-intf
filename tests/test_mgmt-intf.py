@@ -1582,6 +1582,75 @@ class mgmtIntfTests(OpsVsiTest):
         info("### Successfully verified to remove "
              "Static IPv6 with IPv4 name server ###\n")
 
+    # Verify to configure system hostname through CLI
+    def config_set_hostname_from_cli(self):
+        s1 = self.net.switches[0]
+        s1.cmdCLI("config terminal")
+        s1.cmdCLI("hostname halon")
+        cnt = 15
+        while cnt:
+            cmd_output = s1.cmd("ovs-vsctl list system")
+            output = s1.cmd("uname -n")
+            if ("hostname=halon" in cmd_output) and \
+               ("hostname            : halon" in cmd_output) and \
+               ("halon" in output):
+                break
+            else:
+                cnt -= 1
+                sleep(1)
+        assert 'hostname=halon' in cmd_output and \
+               'hostname            : halon' in cmd_output and \
+               'halon' in output,\
+               "Test to set hostname through CLI"\
+               " has failed"
+        info("### Successfully verified configuring"
+             " hostname using CLI ###\n")
+
+    # Verify to unconfigure system hostname through CLI
+    def config_no_hostname_from_cli(self):
+        s1 = self.net.switches[0]
+        s1.cmdCLI("config terminal")
+        s1.cmdCLI("no hostname")
+        cnt = 15
+        while cnt:
+            cmd_output = s1.cmd("ovs-vsctl list system")
+            output = s1.cmd("uname -n")
+            if ("hostname=switch" in cmd_output) and \
+               ("hostname            : \"\"" in cmd_output) and \
+               ("switch" in output):
+                break
+            else:
+                cnt -= 1
+                sleep(1)
+        assert 'hostname=switch' in cmd_output and \
+               'hostname            : \"\"' in cmd_output and \
+               'switch' in output,\
+               "Test to unset hostname through CLI"\
+               " has failed"
+        info("### Successfully verified reconfiguring"
+             " hostname to default value using CLI ###\n")
+
+    # Verify to check system hostname defaults to switch
+    def default_system_hostname(self):
+        s1 = self.net.switches[0]
+        cnt = 15
+        while cnt:
+            cmd_output = s1.cmd("ovs-vsctl list system")
+            output = s1.cmd("uname -n")
+            if ("hostname=switch" in cmd_output) and \
+               ("hostname            : \"\"" in cmd_output) and \
+               ("switch" in output):
+                break
+            else:
+                cnt -= 1
+                sleep(1)
+        assert 'hostname=switch' in cmd_output and \
+               'hostname            : \"\"' in cmd_output and \
+               'switch' in output,\
+               "Test to set default value of hostname has failed"
+        info("### Successfully verified setting"
+             " hostname to default value ###\n")
+
     #Extra cleanup if test fails in middle.
     def mgmt_intf_cleanup(self):
         s1 = self.net.switches[0]
@@ -1864,3 +1933,14 @@ class Test_mgmt_intf:
 
     def test_remove_ipv6_on_mgmt_intf_with_nameserver_ipv4(self):
         self.test.remove_ipv6_on_mgmt_intf_with_nameserver_ipv4()
+
+    def test_config_set_hostname_from_cli(self):
+        info("\n########## Test to configure System Hostname "
+             " ##########\n")
+        self.test.config_set_hostname_from_cli()
+
+    def test_config_no_hostname_from_cli(self):
+        self.test.config_no_hostname_from_cli()
+
+    def test_default_system_hostname(self):
+        self.test.default_system_hostname()
