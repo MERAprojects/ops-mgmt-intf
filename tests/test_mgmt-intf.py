@@ -1144,7 +1144,7 @@ class mgmtIntfTests(OpsVsiTest):
             'Test to change mode from static to dhcp failed'
         output = s1.cmd("ovs-vsctl list system")
         output += s1.cmd("echo")
-        assert 'ipv6-linklocal' in output,\
+        assert 'ipv6_linklocal' in output,\
             'Test to change mode from static to dhcp failed'
         assert 'dns-server-1' not in output,\
             'Test to change mode from static to dhcp failed'
@@ -1590,7 +1590,6 @@ class mgmtIntfTests(OpsVsiTest):
             s1.cmd("ip netns exec swns ip address flush dev 1")
 
 
-@pytest.mark.skipif(True, reason="Cleanup going on mgmt interface repo.")
 class Test_mgmt_intf:
 
     def setup_class(cls):
@@ -1822,9 +1821,13 @@ class Test_mgmt_intf:
     def test_change_mode_from_static_to_dhcp_ipv6(self):
         self.test.change_mode_from_static_to_dhcp_ipv6()
 
+    @pytest.mark.skipif(True, reason="Disabling this testcase "
+                        "due to this Defect:203[Mgmt If - IPV6 handle DAD]")
     def test_ipv6_got_after_populated_ipv6_config(self):
         self.test.ipv6_got_after_populated_ipv6_config()
 
+    @pytest.mark.skipif(True, reason="Disabling this testcase "
+                        "due to this Defect:203[Mgmt If - IPV6 handle DAD]")
     def test_ipv6_default_gateway_got_after_populated_ipv6_config(self):
         self.test.ipv6_default_gateway_got_after_populated_ipv6_config()
 
