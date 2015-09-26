@@ -1023,8 +1023,8 @@ class mgmtIntfTests(OpsVsiTest):
                           output_show):
                 sleep(1)
                 cnt -= 1
-                cnt2 = 15
             else:
+                cnt2 = 15
                 while cnt2:
                     output = s1.cmd("cat /etc/resolv.conf")
                     output += s1.cmd("echo")
@@ -1651,6 +1651,56 @@ class mgmtIntfTests(OpsVsiTest):
         info("### Successfully verified setting"
              " hostname to default value ###\n")
 
+    # Verify to set hostname through dhclient
+    def set_hostname_by_dhclient(self):
+        s1 = self.net.switches[0]
+        s1.cmd("dhcphostname open-vswitch-new")
+        cnt = 15
+        while cnt:
+            cmd_output = s1.cmd("ovs-vsctl list system")
+            output = s1.cmd("uname -n")
+            if ("dhcp_hostname=open-vswitch-new" in cmd_output) and \
+               ("hostname=open-vswitch-new" in cmd_output) and \
+               ("hostname            : \"\"" in cmd_output) and \
+               ("open-vswitch-new" in output):
+                break
+            else:
+                cnt -= 1
+                sleep(1)
+        assert 'dhcp_hostname=open-vswitch-new' in cmd_output and \
+               'hostname=open-vswitch-new' in cmd_output and \
+               'hostname            : \"\"' in cmd_output and \
+               'open-vswitch-new' in output,\
+            "Test to set system hostname through dhclient"\
+            " has failed"
+        info("### Successfully verified to set system hostname"
+             " by dhclient ###\n")
+
+    # Verify to remove hostname through dhclient
+    def remove_dhcp_hostname_by_dhclient(self):
+        s1 = self.net.switches[0]
+        s1.cmd("dhcphostname " + 'null')
+        cnt = 15
+        while cnt:
+            cmd_output = s1.cmd("ovs-vsctl list system")
+            output = s1.cmd("uname -n")
+            if ("dhcp_hostname=" not in cmd_output) and \
+               ("hostname=switch" in cmd_output) and \
+               ("hostname            : \"\"" in cmd_output) and \
+               ("switch" in output):
+                break
+            else:
+                cnt -= 1
+                sleep(1)
+        assert 'dhcp_hostname=' not in cmd_output and \
+               'hostname=switch' in cmd_output and \
+               'hostname            : \"\"' in cmd_output and \
+               'switch' in output, \
+            "Test to remove dhcp_hostname through dhclient"\
+            " has failed"
+        info("### Successfully verified to remove dhcp_hostname"
+             " by dhclient ###\n")
+
     #Extra cleanup if test fails in middle.
     def mgmt_intf_cleanup(self):
         s1 = self.net.switches[0]
@@ -1944,3 +1994,9 @@ class Test_mgmt_intf:
 
     def test_default_system_hostname(self):
         self.test.default_system_hostname()
+
+    def test_set_hostname_by_dhclient(self):
+        self.test.set_hostname_by_dhclient()
+
+    def test_remove_dhcp_hostname_by_dhclient(self):
+        self.test.remove_dhcp_hostname_by_dhclient()
