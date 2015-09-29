@@ -1586,21 +1586,21 @@ class mgmtIntfTests(OpsVsiTest):
     def config_set_hostname_from_cli(self):
         s1 = self.net.switches[0]
         s1.cmdCLI("config terminal")
-        s1.cmdCLI("hostname halon")
+        s1.cmdCLI("hostname cli")
         cnt = 15
         while cnt:
             cmd_output = s1.cmd("ovs-vsctl list system")
             output = s1.cmd("uname -n")
-            if ("hostname=halon" in cmd_output) and \
-               ("hostname            : halon" in cmd_output) and \
-               ("halon" in output):
+            if ("hostname=cli" in cmd_output) and \
+               ("hostname            : cli" in cmd_output) and \
+               ("cli" in output):
                 break
             else:
                 cnt -= 1
                 sleep(1)
-        assert 'hostname=halon' in cmd_output and \
-               'hostname            : halon' in cmd_output and \
-               'halon' in output,\
+        assert 'hostname=cli' in cmd_output and \
+               'hostname            : cli' in cmd_output and \
+               'cli' in output,\
                "Test to set hostname through CLI"\
                " has failed"
         info("### Successfully verified configuring"
@@ -1654,23 +1654,23 @@ class mgmtIntfTests(OpsVsiTest):
     # Verify to set hostname through dhclient
     def set_hostname_by_dhclient(self):
         s1 = self.net.switches[0]
-        s1.cmd("dhcphostname open-vswitch-new")
+        s1.cmd("dhcphostname dhcp-new")
         cnt = 15
         while cnt:
             cmd_output = s1.cmd("ovs-vsctl list system")
             output = s1.cmd("uname -n")
-            if ("dhcp_hostname=open-vswitch-new" in cmd_output) and \
-               ("hostname=open-vswitch-new" in cmd_output) and \
+            if ("dhcp_hostname=dhcp-new" in cmd_output) and \
+               ("hostname=dhcp-new" in cmd_output) and \
                ("hostname            : \"\"" in cmd_output) and \
-               ("open-vswitch-new" in output):
+               ("dhcp-new" in output):
                 break
             else:
                 cnt -= 1
                 sleep(1)
-        assert 'dhcp_hostname=open-vswitch-new' in cmd_output and \
-               'hostname=open-vswitch-new' in cmd_output and \
+        assert 'dhcp_hostname=dhcp-new' in cmd_output and \
+               'hostname=dhcp-new' in cmd_output and \
                'hostname            : \"\"' in cmd_output and \
-               'open-vswitch-new' in output,\
+               'dhcp-new' in output,\
             "Test to set system hostname through dhclient"\
             " has failed"
         info("### Successfully verified to set system hostname"
