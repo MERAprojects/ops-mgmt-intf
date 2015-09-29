@@ -32,8 +32,8 @@ import pytest
 
 
 class mgmtIntfTests(OpsVsiTest):
-    # This class memeber is used for retaining
-    # IPv4 and it's subnet mask whcih is obtained from DHCP server.
+    # This class member is used for retaining
+    # IPv4 and it's subnet mask which is obtained from DHCP server.
     Dhcp_Ipv4_submask = ''
 
     def setupNet(self):
@@ -136,7 +136,7 @@ class mgmtIntfTests(OpsVsiTest):
         assert temp[0] in output, "Test to add default"\
             " gateway in DHCP mode failed"
         info("### Successfully verified configuration"
-             " of Deafult gateway in DHCP mode ###\n")
+             " of Default gateway in DHCP mode ###\n")
 
     # Add DNS Server 1 in DHCP mode.
     def config_primary_ipv4_dns_dhcp_mode(self):
@@ -173,7 +173,7 @@ class mgmtIntfTests(OpsVsiTest):
         IPV4_static = re.sub('\d+$', '128', self.Dhcp_Ipv4_submask[0])
         s1.cmdCLI("ip static "+IPV4_static+"/"+self.Dhcp_Ipv4_submask[1])
         output = s1.cmdCLI(" ")
-        cnt = 30
+        cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
             output += s1.cmd("echo")
@@ -360,8 +360,9 @@ class mgmtIntfTests(OpsVsiTest):
                'Test to Reconfigure Primary DNS failed'
         info('### Successfully Reconfigured Primary DNS in static mode ###\n')
 
-    # Remove primary dns in staic mode.
+    # Remove primary dns in static mode.
     def remove_primary_ipv4_dns_static_mode(self):
+        sleep(15)
         s1 = self.net.switches[0]
         s1.cmdCLI("no nameserver 10.10.10.20")
         cnt = 15
@@ -388,8 +389,10 @@ class mgmtIntfTests(OpsVsiTest):
 
     # Configure Secondary DNS Server in static mode.
     def config_secondary_ipv4_dns_static_mode(self):
+        sleep(15)
         s1 = self.net.switches[0]
         s1.cmdCLI("nameserver 10.10.10.4 10.10.10.5")
+        sleep(2)
         cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
@@ -842,7 +845,7 @@ class mgmtIntfTests(OpsVsiTest):
              " gateway ip in static mode ###\n")
 
     # Add Default link-local  gateway ipv6 in static mode.
-    def config_default_linl_local_ipv6_gateway_static_mode(self):
+    def config_default_link_local_ipv6_gateway_static_mode(self):
         s1 = self.net.switches[0]
         output = s1.cmdCLI("default-gateway fe80::5484:7aff:fefe:9799")
         assert 'Invalid IPv4 or IPv6 address' in output,\
@@ -1208,7 +1211,7 @@ class mgmtIntfTests(OpsVsiTest):
         s1.cmdCLI("ip static "+IPV4_static+"/"+self.Dhcp_Ipv4_submask[1])
         s1.cmdCLI("no ip static "+IPV4_static+"/"+self.Dhcp_Ipv4_submask[1])
         output = s1.cmdCLI(" ")
-        cnt = 30
+        cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
             output += s1.cmd("echo")
@@ -1251,7 +1254,7 @@ class mgmtIntfTests(OpsVsiTest):
         cmd_output += s1.cmd("echo")
         cmd_output += s1.cmd("echo")
 
-        cnt = 30
+        cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
             output += s1.cmd("echo")
@@ -1294,7 +1297,7 @@ class mgmtIntfTests(OpsVsiTest):
                                self.Dhcp_Ipv4_submask[1])
         cmd_output += s1.cmdCLI("echo")
         cmd_output += s1.cmdCLI("echo")
-        cnt = 30
+        cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
             output += s1.cmd("echo")
@@ -1336,7 +1339,7 @@ class mgmtIntfTests(OpsVsiTest):
                                self.Dhcp_Ipv4_submask[1])
         cmd_output += s1.cmdCLI("echo")
         cmd_output += s1.cmdCLI("echo")
-        cnt = 30
+        cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
             output += s1.cmd("echo")
@@ -1379,7 +1382,7 @@ class mgmtIntfTests(OpsVsiTest):
                                self.Dhcp_Ipv4_submask[1])
         cmd_output += s1.cmdCLI("echo")
         cmd_output += s1.cmdCLI("echo")
-        cnt = 30
+        cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
             output += s1.cmd("echo")
@@ -1421,7 +1424,7 @@ class mgmtIntfTests(OpsVsiTest):
         s1.cmdCLI("ip static 2001:db8:0:1::156/64")
         cmd_output = s1.cmdCLI("no ip static 2001:db8:0:1::156/64")
         output = s1.cmdCLI(" ")
-        cnt = 30
+        cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
             output += s1.cmd("echo")
@@ -1585,7 +1588,10 @@ class mgmtIntfTests(OpsVsiTest):
     # Verify to configure system hostname through CLI
     def config_set_hostname_from_cli(self):
         s1 = self.net.switches[0]
+        sleep(15)
+        s1.cmdCLI("end")
         s1.cmdCLI("config terminal")
+        sleep(15)
         s1.cmdCLI("hostname cli")
         cnt = 15
         while cnt:
@@ -1883,8 +1889,8 @@ class Test_mgmt_intf:
     def test_config_multicast_ipv6_default_gateway_static_mode(self):
         self.test.config_multicast_ipv6_default_gateway_static_mode()
 
-    def test_config_default_linl_local_ipv6_gateway_static_mode(self):
-        self.test.config_default_linl_local_ipv6_gateway_static_mode()
+    def test_config_default_link_local_ipv6_gateway_static_mode(self):
+        self.test.config_default_link_local_ipv6_gateway_static_mode()
 
     def test_config_loopback_ipv6_default_gateway_static_mode(self):
         self.test.config_loopback_ipv6_default_gateway_static_mode()

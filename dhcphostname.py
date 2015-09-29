@@ -25,6 +25,7 @@ import ovs.dirs
 import ovs.db.idl
 from ovs.db import error
 from ovs.db import types
+import ovs.vlog
 
 # ovs definitions
 idl = None
@@ -34,6 +35,9 @@ OVS_SCHEMA = '/usr/share/openvswitch/vswitch.ovsschema'
 SYSTEM_TABLE = "System"
 MGMT_INTF_NULL_VAL = 'null'
 MGMT_INTF_KEY_DHCP_HOSTNAME = "dhcp_hostname"
+
+#Logging.
+vlog = ovs.vlog.Vlog("mgmtintfcfg")
 
 #------------------ wait_for_config_complete() ----------------
 

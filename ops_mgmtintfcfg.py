@@ -46,6 +46,7 @@ from pyroute2.netlink.rtnl import RTM_DELLINK
 RECV_BUFFER = 4096
 SYSTEM_TABLE = "System"
 DNS_FILE = "/etc/resolv.conf"
+DNS_FILE_RESOLVED = "/etc/systemd/resolved.conf"
 DEFAULT_DNS_1 = '8.8.4.4'
 DEFAULT_DNS_2 = '8.8.8.8'
 DEFAULT_IPV4 = '0.0.0.0'
@@ -56,7 +57,7 @@ OVS_SCHEMA = '/usr/share/openvswitch/vswitch.ovsschema'
 # Anything that starts with 127.0.0 will be taken as loopback address.
 LOOPBACK_ADDR = "127.0.0"
 # Wait 2 seconds for the DHCP client to restart.
-DHCP_RESTART_WAIT_TIME = 2
+RESTART_WAIT_TIME = 1
 
 MGMT_INTF_NULL_VAL = 'null'
 MGMT_INTF_NAMESERVER_STR_LEN = 11
@@ -98,6 +99,29 @@ mode_val = MGMT_INTF_MODE_DHCP
 vlog = ovs.vlog.Vlog("mgmtintfcfg")
 
 
+def mgmt_intf_is_valid_ipv4_address(address):
+    try:
+        socket.inet_pton(socket.AF_INET, address)
+    except AttributeError:
+        try:
+            socket.inet_aton(address)
+        except socket.error:
+            return False
+        return address.count('.') == 3
+    except socket.error:  # Not a valid address.
+        return False
+
+    return True
+
+
+def mgmt_intf_is_valid_ipv6_address(address):
+    try:
+        socket.inet_pton(socket.AF_INET6, address)
+    except socket.error:  # Not a valid address.
+        return False
+    return True
+
+
 def mgmt_intf_unixctl_exit(conn, unused_argv, unused_aux):
     global exiting
 
@@ -115,11 +139,21 @@ def mgmt_intf_clear_dns_conf():
     try:
         fd = open(DNS_FILE, 'w')
         fd.write(newdata)
+        fd.close()
+
+        fd = open(DNS_FILE_RESOLVED, 'w')
+        # Write back the default values to `resolved.conf`.
+        newdata = "[Resolve]\n#DNS=\n#FallbackDNS=\n#LLMNR=yes"
+        fd.write(newdata)
     except IOError:
         vlog.err("File operation failed for file " + DNS_FILE)
     finally:
         fd.close()
 
+    sleep(RESTART_WAIT_TIME)
+    cmd = "rm " + DNS_FILE_RESOLVED
+    os.system(cmd)
+    os.system("systemctl restart systemd-resolved")
     return True
 
 
@@ -356,21 +390,32 @@ def mgmt_intf_update_dns_conf(dns_1, dns_2):
 
     cmd = ""
     if dns_1 != DEFAULT_IPV4:
-        cmd = "nameserver %s\n" % (dns_1)
+        cmd = "DNS= %s" % (dns_1)
     if dns_2 != DEFAULT_IPV4:
-        cmd += "nameserver %s\n" % (dns_2)
+        cmd += " %s" % (dns_2)
 
     try:
+        new_output = "[Resolve]\n" + cmd + '\n'
+
+        fd = open(DNS_FILE_RESOLVED, 'w')
+        fd.write(new_output)
+        fd.close()
+
+        cmd = ""
+        if dns_1 != DEFAULT_IPV4:
+            cmd = "nameserver %s\n" % (dns_1)
+        if dns_2 != DEFAULT_IPV4:
+            cmd += "nameserver %s\n" % (dns_2)
+
         fd = open(DNS_FILE, 'w')
         fd.write(cmd)
         fd.close()
     except IOError:
         vlog.err("File operation failed for file " + DNS_FILE)
-        fd.close()
         return False
-    finally:
-        fd.close()
 
+    sleep(RESTART_WAIT_TIME)
+    os.system("systemctl restart systemd-resolved")
     return True
 
 
@@ -474,7 +519,7 @@ def mgmt_intf_stop_dhcp_client(mgmt_intf):
             os.system(dhcp_str)
             vlog.info("Stopped dhcp v6 client on interface " + mgmt_intf)
 
-            sleep(DHCP_RESTART_WAIT_TIME)
+            sleep(RESTART_WAIT_TIME)
 
 
 # Function to clean up the dhcp settings
@@ -496,6 +541,8 @@ def mgmt_intf_dhcp_cleanup(idl, mgmt_intf):
 def mgmt_intf_dhcp_mode_handler(idl, mgmt_intf):
     # Flush out the statically configured values if any.
     mgmt_intf_clear_static_val(mgmt_intf)
+
+    mgmt_intf_clear_dns_conf()
 
     # Start the DHCP client
     mgmt_intf_start_dhcp_client(idl)
@@ -622,6 +669,10 @@ def mgmt_intf_add_def_gw_ipv6(def_gw_ipv6):
             ipr.close()
             return True
 
+        # Delete the already existing one.
+        if cfg_gw_ipv6 != DEFAULT_IPV6:
+            ipr.route('delete', gateway=cfg_gw_ipv6, family=AF_INET6)
+
         # Configure the default gateway
         ipr.route('add', gateway=def_gw_ipv6, family=AF_INET6)
 
@@ -694,6 +745,132 @@ def mgmt_intf_clear_ipv6_param(mgmt_intf, def_gw_ipv6):
     return True
 
 
+def mgmgt_intf_precheck_ip(mode_val, value, prev_ip):
+    if mode_val != MGMT_INTF_MODE_STATIC:
+        return False
+
+    # Check if the address is valid
+    if not mgmt_intf_is_valid_ipv4_address(value):
+        vlog.err("Management interface: Trying to configure "
+                 "Invalid IP address %s" % value)
+        return False
+
+    # Get the previously configured IP if any and check
+    # if we are trying to update the same value.
+    if prev_ip == value:
+        return False
+
+    return True
+
+
+def mgmt_intf_precheck_subnet(mode_val, value, cfg_ip):
+    if mode_val != MGMT_INTF_MODE_STATIC:
+        return False
+
+    # Check if the address is valid
+    if int(value) < 1 or int(value) > 31:
+        vlog.err("Management interface: Trying to configure "
+                 "invalid subnet %s" % value)
+        return False
+
+    # If the configured IP is not valid then continue.
+    # This will happen in ip remove case.
+    if cfg_ip == DEFAULT_IPV4:
+        return False
+
+    # If value is 0.0.0.0 then the handling is already done in
+    # IP handler.
+    if value == DEFAULT_IPV4:
+        return False
+
+    return True
+
+
+def mgmt_intf_precheck_ipv6(mode_val, value, prev_ip):
+    if mode_val != MGMT_INTF_MODE_STATIC:
+        return False
+
+    # Check if the address is valid
+    offset = value.find('/')
+    ipv6_addr = value[0:offset]
+    if not mgmt_intf_is_valid_ipv6_address(ipv6_addr):
+        vlog.err("Management interface: Trying to configure "
+                 "invalid IPv6 address %s" % value)
+        return False
+
+    if prev_ip == value:
+        return False
+
+    return True
+
+
+def mgmt_intf_precheck_gw(mode_val, value, prev_gw):
+    if mode_val != MGMT_INTF_MODE_STATIC:
+        return False
+
+    # Check if the address is valid
+    if not mgmt_intf_is_valid_ipv4_address(value):
+        vlog.err("Management interface: Trying to configure "
+                 "invalid gateway IP address %s" % value)
+        return False
+
+    if prev_gw == value:
+        return False
+
+    return True
+
+
+def mgmt_intf_precheck_gwv6(mode_val, value, prev_gw):
+    if mode_val != MGMT_INTF_MODE_STATIC:
+        return False
+
+    # Check if the address is valid
+    if not mgmt_intf_is_valid_ipv6_address(value):
+        vlog.err("Management interface: Trying to configure "
+                 "invalid gateway IP address %s" % value)
+        return False
+
+    if prev_gw == value:
+        return False
+
+    return True
+
+
+def mgmt_intf_precheck_dns1(mode_val, value, prev_dns):
+    if mode_val != MGMT_INTF_MODE_STATIC:
+        return False
+    # Check if the address is valid
+    if not mgmt_intf_is_valid_ipv4_address(value) and \
+            not mgmt_intf_is_valid_ipv6_address(value):
+        vlog.err("Management interface: Trying to configure "
+                 "invalid primary nameserver IP address %s" % value)
+        return False
+
+    if prev_dns == value:
+        return False
+
+    return True
+
+
+def mgmt_intf_precheck_dns2(mode_val, value, prev_dns):
+    if mode_val != MGMT_INTF_MODE_STATIC:
+        return False
+
+    # Check if the address is valid
+    if not mgmt_intf_is_valid_ipv4_address(value) and \
+            not mgmt_intf_is_valid_ipv6_address(value):
+        vlog.err("Management interface: Trying to configure "
+                 "invalid secondary nameserver IP address %s" % value)
+        return False
+
+    # Get the previously configured dns2 if any and
+    # check if we are trying to update the same value.
+    if prev_dns == value:
+        return False
+
+    return True
+
+
 # Function to fetch row and handle the configurations.
 # Only modified variables are handled.
 def mgmt_intf_cfg_update(idl):
@@ -727,15 +904,19 @@ def mgmt_intf_cfg_update(idl):
         status_col_updt_reqd = True
         os.system("hostname " + hostname)
 
+    cfg_ip = DEFAULT_IPV4
+    dns1 = DEFAULT_IPV4
+
     # Retrieve the mode and interface from config table
     for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
         if ovs_rec.mgmt_intf:
             mgmt_intf = ovs_rec.mgmt_intf.get(MGMT_INTF_KEY_NAME,
                                               MGMT_INTF_NULL_VAL)
+
+            #---------------  MODE HANDLER ------------------------------------
             value = ovs_rec.mgmt_intf.get(MGMT_INTF_KEY_MODE,
                                           MGMT_INTF_NULL_VAL)
             if value != MGMT_INTF_NULL_VAL:
-            #---------------  MODE HANDLER ------------------------------------
                 # Mode configuration did not change. So nothing to update.
                 if value != mode_val:
                     # If mode is static:
@@ -829,257 +1010,202 @@ def mgmt_intf_cfg_update(idl):
                             status_col_updt_reqd = True
 
                     mode_val = value
-        else:
-            continue
 
-        if mgmt_intf == MGMT_INTF_NULL_VAL:
-            vlog.err("Could not update configured values. "
-                     "Management Interface was not available.")
-            return False
-
-        cfg_ip = DEFAULT_IPV4
-        dns1 = DEFAULT_IPV4
-
-        # interface already obtained. So iterate other values now.
-        for key, value in ovs_rec.mgmt_intf.items():
             #-------------------------IP HANDLER ----------------------------
-            if key == MGMT_INTF_KEY_IP:
-                if mode_val != MGMT_INTF_MODE_STATIC:
-                    continue
-
-                # Get the previously configured IP if any and check
-                # if we are trying to update the same value.
+            value = ovs_rec.mgmt_intf.get(MGMT_INTF_KEY_IP,
+                                          MGMT_INTF_NULL_VAL)
+            if value != MGMT_INTF_NULL_VAL:
                 prev_ip = status_data.get(MGMT_INTF_KEY_IP, DEFAULT_IPV4)
-                if prev_ip == value:
-                    continue
+                # Check if the validation passes.
+                if mgmgt_intf_precheck_ip(mode_val, value, prev_ip):
+                    # If any IP was previously configured and the user tries
+                    # to configure another one now, then delete the old IP
+                    if prev_ip != DEFAULT_IPV4:
+                        prev_subnet = status_data.get(MGMT_INTF_KEY_SUBNET,
+                                                      DEFAULT_IPV4)
+                        if prev_subnet != DEFAULT_IPV4:
+                            mgmt_intf_remove_ip(mgmt_intf, prev_ip,
+                                                prev_subnet)
+                        else:
+                            # IP was there but subnet not found.
+                            # So remove the ip.
+                            del status_data[MGMT_INTF_KEY_IP]
+                            status_col_updt_reqd = True
 
-                # If any IP was previously configured and the user tries
-                # to configure another one now, then delete the old IP
-                if prev_ip != DEFAULT_IPV4:
-                    prev_subnet = status_data.get(MGMT_INTF_KEY_SUBNET,
-                                                  DEFAULT_IPV4)
-                    if prev_subnet != DEFAULT_IPV4:
-                        mgmt_intf_remove_ip(mgmt_intf, prev_ip, prev_subnet)
-                    else:
-                        # IP was there but subnet not found. So remove the ip.
+                    if value == DEFAULT_IPV4:
+                        # Previously configured IP is removed in above
+                        # condition.
+                        # So only update status column here.
                         del status_data[MGMT_INTF_KEY_IP]
+                        del status_data[MGMT_INTF_KEY_SUBNET]
                         status_col_updt_reqd = True
 
-                if value == DEFAULT_IPV4:
-                    # Previously configured IP is removed in above condition.
-                    # So only update status column here.
-                    del status_data[MGMT_INTF_KEY_IP]
-                    del status_data[MGMT_INTF_KEY_SUBNET]
-                    status_col_updt_reqd = True
-
-                # Update this value to be added when subnet key is processed.
-                cfg_ip = value
+                    # Update this value to be added when subnet key is
+                    # processed.
+                    cfg_ip = value
             #-------------------------SUBNET HANDLER -------------------------
-            if key == MGMT_INTF_KEY_SUBNET:
-                if mode_val != MGMT_INTF_MODE_STATIC:
-                    continue
-
+            value = ovs_rec.mgmt_intf.get(MGMT_INTF_KEY_SUBNET,
+                                          MGMT_INTF_NULL_VAL)
+            if value != MGMT_INTF_NULL_VAL:
                 # If the configured IP is not valid then continue.
                 # This will happen in ip remove case.
                 if cfg_ip == DEFAULT_IPV4:
                     # Check if only subnet has changed.
                     cfg_ip = status_data.get(MGMT_INTF_KEY_IP, DEFAULT_IPV4)
-                    if cfg_ip == DEFAULT_IPV4:
-                        continue
 
-                # If value is 0.0.0.0 then the handling is already done in
-                # IP handler.
-                if value == DEFAULT_IPV4:
-                    continue
-
-                # If adding IP fails then ip will not be updated in status
-                # column so that it will be retried again.
-                if mgmt_intf_add_ip(mgmt_intf, cfg_ip, int(value)):
-                    status_data[MGMT_INTF_KEY_IP] = cfg_ip
-                    status_data[MGMT_INTF_KEY_SUBNET] = value
-                    status_col_updt_reqd = True
+                if mgmt_intf_precheck_subnet(mode_val, value, cfg_ip):
+                    # If adding IP fails then ip will not be updated in status
+                    # column so that it will be retried again.
+                    if mgmt_intf_add_ip(mgmt_intf, cfg_ip, int(value)):
+                        status_data[MGMT_INTF_KEY_IP] = cfg_ip
+                        status_data[MGMT_INTF_KEY_SUBNET] = value
+                        status_col_updt_reqd = True
 
             #-------------------------IPv6 HANDLER ---------------------------
-            if key == MGMT_INTF_KEY_IPV6:
-                if mode_val != MGMT_INTF_MODE_STATIC:
-                    continue
-
+            value = ovs_rec.mgmt_intf.get(MGMT_INTF_KEY_IPV6,
+                                          MGMT_INTF_NULL_VAL)
+            if value != MGMT_INTF_NULL_VAL:
                 # Get the previously configured IPv6 if any and
                 # check if we are trying to update the same value.
                 prev_ip = status_data.get(MGMT_INTF_KEY_IPV6, DEFAULT_IPV6)
-                if prev_ip == value:
-                    continue
-
-                if prev_ip != DEFAULT_IPV6:
-                    # If IPv6 is set again the previous value has to be
-                    # removed before the new one is set.
-                    mgmt_intf_remove_ipv6(mgmt_intf)
-                    del status_data[MGMT_INTF_KEY_IPV6]
-                    status_col_updt_reqd = True
-
-                if value != DEFAULT_IPV6:
-                    offset = value.find('/')
-                    ipv6_addr = value[0:offset]
-                    ipv6_prefix = int(value[offset+1:len(value)])
-                    if mgmt_intf_add_ipv6(mgmt_intf, ipv6_addr, ipv6_prefix):
-                        status_data[MGMT_INTF_KEY_IPV6] = value
+                if mgmt_intf_precheck_ipv6(mode_val, value, prev_ip):
+                    if prev_ip != DEFAULT_IPV6:
+                        # If IPv6 is set again the previous value has to be
+                        # removed before the new one is set.
+                        mgmt_intf_remove_ipv6(mgmt_intf)
+                        del status_data[MGMT_INTF_KEY_IPV6]
                         status_col_updt_reqd = True
 
-            #-------------------------DEFAULT GATEWAY HANDLER -----------------
-            if key == MGMT_INTF_KEY_DEF_GW:
-                if mode_val != MGMT_INTF_MODE_STATIC:
-                    continue
+                    if value != DEFAULT_IPV6:
+                        offset = value.find('/')
+                        ipv6_addr = value[0:offset]
+                        ipv6_prefix = int(value[offset+1:len(value)])
+                        if mgmt_intf_add_ipv6(mgmt_intf, ipv6_addr,
+                                              ipv6_prefix):
+                            status_data[MGMT_INTF_KEY_IPV6] = value
+                            status_col_updt_reqd = True
 
+            #-------------------------DEFAULT GATEWAY HANDLER -----------------
+            value = ovs_rec.mgmt_intf.get(MGMT_INTF_KEY_DEF_GW,
+                                          MGMT_INTF_NULL_VAL)
+            if value != MGMT_INTF_NULL_VAL:
                 # Get the previously configured gw if any and check if we
                 # are trying to update the same value.
                 prev_gw = status_data.get(MGMT_INTF_KEY_DEF_GW, DEFAULT_IPV4)
-                if prev_gw == value:
-                    continue
+                if mgmt_intf_precheck_gw(mode_val, value, prev_gw):
+                    # If any gw was previously configured and the user tries
+                    # to configure another one now, then delete the old gw.
+                    if prev_gw != DEFAULT_IPV4:
+                        mgmt_intf_remove_def_gw(prev_gw)
 
-                # If any gw was previously configured and the user tries
-                # to configure another one now, then delete the old gw.
-                if prev_gw != DEFAULT_IPV4:
-                    mgmt_intf_remove_def_gw(prev_gw)
-
-                # No default-gateway case.
-                if value == DEFAULT_IPV4:
-                    # Previously configured gw is removed in above condition.
-                    # So only update status column here.
-                    del status_data[MGMT_INTF_KEY_DEF_GW]
-                    status_col_updt_reqd = True
-                    continue
-
-                # If adding default gateway fails then default gateway will
-                # not be updated in status column, so that it will be
-                # retried again.
-                if mgmt_intf_add_def_gw(value):
-                    status_data[MGMT_INTF_KEY_DEF_GW] = value
-                    status_col_updt_reqd = True
+                    # No default-gateway case.
+                    if value == DEFAULT_IPV4:
+                        # Previously configured gw is removed in above
+                        # condition. So only update status column here.
+                        del status_data[MGMT_INTF_KEY_DEF_GW]
+                        status_col_updt_reqd = True
+                    else:
+                        # If adding default gateway fails then default gateway
+                        # will not be updated in status column, so that it
+                        # will be retried again.
+                        if mgmt_intf_add_def_gw(value):
+                            status_data[MGMT_INTF_KEY_DEF_GW] = value
+                            status_col_updt_reqd = True
 
             #---------------DEFAULT GATEWAY HANDLER IPV6----------------------
-            if key == MGMT_INTF_KEY_DEF_GW_V6:
-                if mode_val != MGMT_INTF_MODE_STATIC:
-                    continue
-
+            value = ovs_rec.mgmt_intf.get(MGMT_INTF_KEY_DEF_GW_V6,
+                                          MGMT_INTF_NULL_VAL)
+            if value != MGMT_INTF_NULL_VAL:
                 # Get the previously configured gw if any and check
                 # if we are trying to update the same value.
                 prev_gw = status_data.get(MGMT_INTF_KEY_DEF_GW_V6,
                                           DEFAULT_IPV6)
-                if prev_gw == value:
-                    continue
+                if mgmt_intf_precheck_gwv6(mode_val, value, prev_gw):
+                    if value != DEFAULT_IPV6:
+                        if prev_gw != DEFAULT_IPV6:
+                            mgmt_intf_remove_def_gw_ipv6(prev_gw)
+                            del status_data[MGMT_INTF_KEY_DEF_GW_V6]
 
-                if value != DEFAULT_IPV6:
-                    if prev_gw != DEFAULT_IPV6:
+                        if mgmt_intf_add_def_gw_ipv6(value):
+                            status_data[MGMT_INTF_KEY_DEF_GW_V6] = value
+                            status_col_updt_reqd = True
+                    else:
                         mgmt_intf_remove_def_gw_ipv6(prev_gw)
-                        del status_data[MGMT_INTF_KEY_DEF_GW_V6]
+                        if prev_gw != DEFAULT_IPV6:
+                            del status_data[MGMT_INTF_KEY_DEF_GW_V6]
+                            status_col_updt_reqd = True
 
-                    if mgmt_intf_add_def_gw_ipv6(value):
-                        status_data[MGMT_INTF_KEY_DEF_GW_V6] = value
-                        status_col_updt_reqd = True
-                else:
-                    mgmt_intf_remove_def_gw_ipv6(prev_gw)
-                    if prev_gw != DEFAULT_IPV6:
-                        del status_data[MGMT_INTF_KEY_DEF_GW_V6]
-                        status_col_updt_reqd = True
             #------------------PRIMARY DNS HANDLER ----------------------------
-            if key == MGMT_INTF_KEY_DNS1:
-                if mode_val != MGMT_INTF_MODE_STATIC:
-                    continue
-
+            value = ovs_rec.mgmt_intf.get(MGMT_INTF_KEY_DNS1,
+                                          MGMT_INTF_NULL_VAL)
+            if value != MGMT_INTF_NULL_VAL:
                 # Get the previously configured dns1 if any and check if
                 # we are trying to update the same value.
                 prev_dns = status_data.get(MGMT_INTF_KEY_DNS1, DEFAULT_IPV4)
-                if prev_dns == value:
-                    continue
 
-                # If any dns1 was previously configured and the user tries
-                # to configure another one now, then delete the old dns1
-                if prev_dns != DEFAULT_IPV4:
-                    # We cannot configure secondary without primary.
-                    # So flush the dns values
-                    mgmt_intf_clear_dns_conf()
+                if mgmt_intf_precheck_dns1(mode_val, value, prev_dns):
+                    # If any dns1 was previously configured and the user tries
+                    # to configure another one now, then delete the old dns1
+                    if prev_dns != DEFAULT_IPV4:
+                        # We cannot configure secondary without primary.
+                        # So flush the dns values
+                        mgmt_intf_clear_dns_conf()
 
-                # no nameserver <ip-addr case>.
-                if (value == DEFAULT_IPV4) or (value == DEFAULT_IPV6):
-                    '''
-                      Previously configured dns1 is removed here.
-                      Sometimes when the daemon restarts again the dns value
-                      might not be present. So check and then remove
-                    '''
-                    if status_data.get(MGMT_INTF_KEY_DNS1, DEFAULT_IPV4) \
-                            != DEFAULT_IPV4:
-                        del status_data[MGMT_INTF_KEY_DNS1]
-                        status_col_updt_reqd = True
-                        continue
+                    # no nameserver <ip-addr case>.
+                    if (value == DEFAULT_IPV4) or (value == DEFAULT_IPV6):
+                        '''
+                          Previously configured dns1 is removed here.
+                          Sometimes when the daemon restarts again the
+                          dns value might not be present. So check
+                          and then remove
+                        '''
+                        if status_data.get(MGMT_INTF_KEY_DNS1, DEFAULT_IPV4) \
+                                != DEFAULT_IPV4:
+                            del status_data[MGMT_INTF_KEY_DNS1]
+                            status_col_updt_reqd = True
+                    else:
+                        # If adding dns1 fails then dns1 will not be updated in
+                        # status column, so that it will be retried again.
+                        if mgmt_intf_update_dns_conf(value, DEFAULT_IPV4):
+                            status_data[MGMT_INTF_KEY_DNS1] = value
+                            status_col_updt_reqd = True
 
-                # If adding dns1 fails then dns1 will not be updated in
-                # status column, so that it will be retried again.
-                if mgmt_intf_update_dns_conf(value, DEFAULT_IPV4):
-                    status_data[MGMT_INTF_KEY_DNS1] = value
-                    status_col_updt_reqd = True
             #--------------------SECONDARY DNS HANDLER ------------------------
-            if key == MGMT_INTF_KEY_DNS2:
-                if mode_val != MGMT_INTF_MODE_STATIC:
-                    continue
-
+            value = ovs_rec.mgmt_intf.get(MGMT_INTF_KEY_DNS2,
+                                          MGMT_INTF_NULL_VAL)
+            if value != MGMT_INTF_NULL_VAL:
                 dns2 = status_data.get(MGMT_INTF_KEY_DNS2, DEFAULT_IPV4)
-                # no nameserver <dns1-ip-addr> <dns2-ip-addr> case.
-                if ((value == DEFAULT_IPV4) or (value == DEFAULT_IPV6)) \
-                        and (dns2 != DEFAULT_IPV4):
-                    mgmt_intf_clear_dns_conf()
-                    '''
-                     DNS1 would have been deleted already in DNS1 handler.
-                     So delete DNS2 alone here.
-                    '''
-                    del status_data[MGMT_INTF_KEY_DNS2]
-                    status_col_updt_reqd = True
-                    continue
-
-                # Secondary cannot be configured without primary.
-                # So if primary DNS is not present,
-                # then dont update secondary DNS too.
                 dns1 = status_data.get(MGMT_INTF_KEY_DNS1, DEFAULT_IPV4)
-                if dns1 == DEFAULT_IPV4:
-                    continue
-
-                # Get the previously configured dns2 if any and
-                # check if we are trying to update the same value.
                 prev_dns = status_data.get(MGMT_INTF_KEY_DNS2, DEFAULT_IPV4)
-                if prev_dns == value:
-                    continue
+                if mgmt_intf_precheck_dns2(mode_val, value, prev_dns):
+                    # no nameserver <dns1-ip-addr> <dns2-ip-addr> case.
+                    if ((value == DEFAULT_IPV4) or (value == DEFAULT_IPV6)) \
+                            and (dns2 != DEFAULT_IPV4):
+                        mgmt_intf_clear_dns_conf()
+                        '''
+                         DNS1 would have been deleted already in DNS1 handler.
+                         So delete DNS2 alone here.
+                        '''
+                        del status_data[MGMT_INTF_KEY_DNS2]
+                        status_col_updt_reqd = True
+                    else:
+                        # Secondary cannot be configured without primary.
+                        # So if primary DNS is not present,
+                        # then dont update secondary DNS too.
+                        if dns1 != DEFAULT_IPV4:
+                            # Delete old one and then configure new one.
+                            if prev_dns != DEFAULT_IPV4:
+                                # Remove the previous dns2 alone
+                                mgmt_intf_update_dns_conf(dns1, DEFAULT_IPV4)
 
-                # If any dns2 was previously configured and the user tries
-                # to configure another one now, then delete the old dns2.
-                if prev_dns != DEFAULT_IPV4:
-                    # Remove the previous dns2 alone
-                    mgmt_intf_update_dns_conf(dns1, DEFAULT_IPV4)
-
-                # If adding dns1 fails then dns1 will not be updated in
-                # status column, so that it will be retried again.
-                if mgmt_intf_update_dns_conf(dns1, value):
-                    status_data[MGMT_INTF_KEY_DNS2] = value
-                    status_col_updt_reqd = True
-
-    try:
-        fd = open(DNS_FILE, 'r')
-        output = fd.read()
-        fd.close()
-        # If no DNS address then resolved writes default values.
-        # So flush out these default values.
-        if DEFAULT_DNS_1 in output or DEFAULT_DNS_2 in output:
-            mgmt_intf_clear_dns_conf()
-
-            # Remove the configured DNS values from status column, so that
-            # the configuration will be written into the conf file and
-            # status col will be updated next time when cfg_update happens.
-            dns_1 = status_data.get(MGMT_INTF_KEY_DNS1, DEFAULT_IPV4)
-            if dns_1 != DEFAULT_IPV4:
-                mgmt_intf_update_dns_conf(dns_1, DEFAULT_IPV4)
-                dns_2 = status_data.get(MGMT_INTF_KEY_DNS2, DEFAULT_IPV4)
-                if dns_2 != DEFAULT_IPV4:
-                    mgmt_intf_update_dns_conf(dns_1, dns_2)
-    except IOError:
-        vlog.err("File operation failed for file " + DNS_FILE)
+                            # If adding dns1 fails then dns1 will not be
+                            # updated in status column, so that it will be
+                            # retried again.
+                            if mgmt_intf_update_dns_conf(dns1, value):
+                                status_data[MGMT_INTF_KEY_DNS2] = value
+                                status_col_updt_reqd = True
+        else:
+            continue
 
     if (status_col_updt_reqd):
         txn = ovs.db.idl.Transaction(idl)
@@ -1616,6 +1742,7 @@ def terminate():
 
 # Function to initialize dhcp parameters to ovsdb and start the dhclient.
 def mgmt_intf_dhcp_initialize(idl):
+    mgmt_intf_clear_dns_conf()
     # Start the DHCP client. It is ok if it fails to start here,
     # since depending on the mode we might restart it again.
     mgmt_intf_start_dhcp_client(idl)
