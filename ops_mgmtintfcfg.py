@@ -248,7 +248,7 @@ def mgmt_intf_remove_ip(mgmt_intf, ip_val, prefixlen):
         # lookup interface by name.
         dev = ipr.link_lookup(ifname=mgmt_intf)[0]
         # Remove the IP.
-        ipr.addr('delete', dev, address=ip_val, mask=prefixlen)
+        ipr.addr('delete', dev, address=ip_val, mask=int(prefixlen))
         ipr.close()
     except NetlinkError as e:
         vlog.err("Removing IP %s/%s on Mgmt Interface %s failed with code %d"
@@ -618,7 +618,6 @@ def mgmt_intf_add_ipv6(mgmt_intf, ipv6_addr, ipv6_prefix):
 
 # Function to remove statically configured IP and subnet mask
 def mgmt_intf_remove_ipv6(mgmt_intf):
-
     try:
         ipr = IPRoute()
         # lookup interface by name
@@ -790,13 +789,14 @@ def mgmt_intf_precheck_ipv6(mode_val, value, prev_ip):
     if mode_val != MGMT_INTF_MODE_STATIC:
         return False
 
-    # Check if the address is valid
-    offset = value.find('/')
-    ipv6_addr = value[0:offset]
-    if not mgmt_intf_is_valid_ipv6_address(ipv6_addr):
-        vlog.err("Management interface: Trying to configure "
-                 "invalid IPv6 address %s" % value)
-        return False
+    if value != DEFAULT_IPV6:
+        # Check if the address is valid
+        offset = value.find('/')
+        ipv6_addr = value[0:offset]
+        if not mgmt_intf_is_valid_ipv6_address(ipv6_addr):
+            vlog.err("Management interface: Trying to configure "
+                     "invalid IPv6 address %s" % value)
+            return False
 
     if prev_ip == value:
         return False
@@ -824,11 +824,12 @@ def mgmt_intf_precheck_gwv6(mode_val, value, prev_gw):
     if mode_val != MGMT_INTF_MODE_STATIC:
         return False
 
-    # Check if the address is valid
-    if not mgmt_intf_is_valid_ipv6_address(value):
-        vlog.err("Management interface: Trying to configure "
-                 "invalid gateway IP address %s" % value)
-        return False
+    if value != DEFAULT_IPV6:
+        # Check if the address is valid
+        if not mgmt_intf_is_valid_ipv6_address(value):
+            vlog.err("Management interface: Trying to configure "
+                     "invalid gateway IP address %s" % value)
+            return False
 
     if prev_gw == value:
         return False
@@ -836,31 +837,15 @@ def mgmt_intf_precheck_gwv6(mode_val, value, prev_gw):
     return True
 
 
-def mgmt_intf_precheck_dns1(mode_val, value, prev_dns):
-    if mode_val != MGMT_INTF_MODE_STATIC:
-        return False
-    # Check if the address is valid
-    if not mgmt_intf_is_valid_ipv4_address(value) and \
-            not mgmt_intf_is_valid_ipv6_address(value):
-        vlog.err("Management interface: Trying to configure "
-                 "invalid primary nameserver IP address %s" % value)
-        return False
-
-    if prev_dns == value:
-        return False
-
-    return True
-
-
-def mgmt_intf_precheck_dns2(mode_val, value, prev_dns):
+def mgmt_intf_precheck_dns(mode_val, value, prev_dns):
     if mode_val != MGMT_INTF_MODE_STATIC:
         return False
 
     # Check if the address is valid
-    if not mgmt_intf_is_valid_ipv4_address(value) and \
-            not mgmt_intf_is_valid_ipv6_address(value):
+    if (value != DEFAULT_IPV6) and not mgmt_intf_is_valid_ipv4_address(value) \
+            and not mgmt_intf_is_valid_ipv6_address(value):
         vlog.err("Management interface: Trying to configure "
-                 "invalid secondary nameserver IP address %s" % value)
+                 "invalid nameserver IP address %s" % value)
         return False
 
     # Get the previously configured dns2 if any and
@@ -1143,7 +1128,7 @@ def mgmt_intf_cfg_update(idl):
                 # we are trying to update the same value.
                 prev_dns = status_data.get(MGMT_INTF_KEY_DNS1, DEFAULT_IPV4)
 
-                if mgmt_intf_precheck_dns1(mode_val, value, prev_dns):
+                if mgmt_intf_precheck_dns(mode_val, value, prev_dns):
                     # If any dns1 was previously configured and the user tries
                     # to configure another one now, then delete the old dns1
                     if prev_dns != DEFAULT_IPV4:
@@ -1177,7 +1162,7 @@ def mgmt_intf_cfg_update(idl):
                 dns2 = status_data.get(MGMT_INTF_KEY_DNS2, DEFAULT_IPV4)
                 dns1 = status_data.get(MGMT_INTF_KEY_DNS1, DEFAULT_IPV4)
                 prev_dns = status_data.get(MGMT_INTF_KEY_DNS2, DEFAULT_IPV4)
-                if mgmt_intf_precheck_dns2(mode_val, value, prev_dns):
+                if mgmt_intf_precheck_dns(mode_val, value, prev_dns):
                     # no nameserver <dns1-ip-addr> <dns2-ip-addr> case.
                     if ((value == DEFAULT_IPV4) or (value == DEFAULT_IPV6)) \
                             and (dns2 != DEFAULT_IPV4):

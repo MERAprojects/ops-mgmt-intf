@@ -54,14 +54,82 @@ class mgmtIntfTests(OpsVsiTest):
                       "  /etc/apparmor.d/disable/")
             os.system('sudo apparmor_parser -R /etc/apparmor.d/sbin.dhclient')
 
-    def numToDottedQuad(self, n):
-        d = 256 * 256 * 256
-        q = []
-        while d > 0:
-            m, n = divmod(n, d)
-            q.append(str(m))
-            d = d/256
-        return '.'.join(q)
+    # Static IP configuration check
+    def static_ip_config_check(self, conf_ip):
+        s1 = self.net.switches[0]
+        cnt = 15
+        while cnt:
+            output = s1.cmdCLI("do show interface mgmt")
+            output += s1.cmd("echo")
+            if conf_ip in output:
+                cnt2 = 15
+                while cnt2:
+                    output = s1.cmd("ip addr show dev eth0")
+                    output += s1.cmd("echo")
+                    if conf_ip in output:
+                        break
+                    else:
+                        cnt2 -= 1
+                        sleep(1)
+                break
+            else:
+                sleep(1)
+                cnt -= 1
+        assert conf_ip in output,\
+            'Test to add static IP address in static mode failed'
+
+    # Static IP unconfiguration check
+    def static_ip_unconfigure_check(self, conf_ip):
+        s1 = self.net.switches[0]
+        cnt = 15
+        while cnt:
+            output = s1.cmdCLI("do show interface mgmt")
+            output += s1.cmd("echo")
+            if conf_ip not in output:
+                cnt2 = 15
+                while cnt2:
+                    output = s1.cmd("ip addr show dev eth0")
+                    output += s1.cmd("echo")
+                    if conf_ip not in output:
+                        break
+                    else:
+                        cnt2 -= 1
+                        sleep(1)
+                break
+            else:
+                sleep(1)
+                cnt -= 1
+        assert conf_ip not in output,\
+            'Test to Remove static IP address in static mode failed'
+
+    # Default IPv4 configuration check
+    def default_ipv4_configure_check(self, def_ip):
+        s1 = self.net.switches[0]
+        output = s1.cmdCLI(" ")
+        output_show = ''
+        cnt = 15
+        while cnt:
+            output_show = s1.cmdCLI("do show interface mgmt")
+            output += s1.cmdCLI(" ")
+            temp = re.findall("Default gateway IPv4\s+: "+def_ip, output_show)
+            if temp:
+                cnt2 = 15
+                while cnt2:
+                    output = s1.cmd("ip route show")
+                    output += s1.cmd("echo")
+                    if def_ip in output:
+                        break
+                    else:
+                        cnt2 -= 1
+                        sleep(1)
+                break
+            else:
+                sleep(1)
+                cnt -= 1
+        assert "Default gateway IPv4\t\t: "+def_ip in output_show,\
+               'Test to add default ipv4 gateway failed in show interface'
+        assert def_ip in output,\
+            "Test to add Default gateway in ip route failed"
 
     # DHCP client started on management interface.
     def dhclient_started_on_mgmt_intf_ipv4(self):
@@ -171,33 +239,9 @@ class mgmtIntfTests(OpsVsiTest):
     def config_ipv4_on_mgmt_intf_static_mode(self):
         s1 = self.net.switches[0]
         IPV4_static = re.sub('\d+$', '128', self.Dhcp_Ipv4_submask[0])
-        s1.cmdCLI("ip static "+IPV4_static+"/"+self.Dhcp_Ipv4_submask[1])
-        output = s1.cmdCLI(" ")
-        cnt = 15
-        while cnt:
-            output = s1.cmdCLI("do show interface mgmt")
-            output += s1.cmd("echo")
-            output += s1.cmd("echo")
-            if IPV4_static in output and self.Dhcp_Ipv4_submask[1] in output:
-                cnt2 = 15
-                while cnt2:
-                    output = s1.cmd("ifconfig")
-                    output += s1.cmd("echo")
-                    if IPV4_static in output and\
-                       self.Dhcp_Ipv4_submask[1] in output:
-                        break
-                    else:
-                        cnt2 -= 1
-                        sleep(1)
-                break
-            else:
-                sleep(1)
-                cnt -= 1
-        assert IPV4_static in output,\
-            'Test to add static IP address in static mode failed'
-        subnet = (1 << 32) - (1 << 32 >> int(self.Dhcp_Ipv4_submask[1]))
-        assert self.numToDottedQuad(subnet) in output,\
-            'Test to add static IP address in static mode failed'
+        conf_ipv4 = IPV4_static+"/"+self.Dhcp_Ipv4_submask[1]
+        s1.cmdCLI("ip static "+conf_ipv4)
+        self.static_ip_config_check(conf_ipv4)
         info("### Successfully configured static"
              " IP address in static mode ###\n")
 
@@ -205,33 +249,9 @@ class mgmtIntfTests(OpsVsiTest):
     def reconfig_ipv4_on_mgmt_intf_static_mode(self):
         s1 = self.net.switches[0]
         IPV4_static = re.sub('\d+$', '129', self.Dhcp_Ipv4_submask[0])
-        s1.cmdCLI("ip static "+IPV4_static+"/"+self.Dhcp_Ipv4_submask[1])
-        output = s1.cmdCLI(" ")
-        cnt = 15
-        while cnt:
-            output = s1.cmdCLI("do show interface mgmt")
-            output += s1.cmd("echo")
-            output += s1.cmd("echo")
-            if IPV4_static in output and self.Dhcp_Ipv4_submask[1] in output:
-                cnt2 = 15
-                while cnt2:
-                    output = s1.cmd("ifconfig")
-                    output += s1.cmd("echo")
-                    if IPV4_static in output and\
-                       self.Dhcp_Ipv4_submask[1] in output:
-                        break
-                    else:
-                        cnt2 -= 1
-                        sleep(1)
-                break
-            else:
-                sleep(1)
-                cnt -= 1
-        assert IPV4_static in output, "Test to Reconfigure static"\
-            " IP address in static mode failed"
-        subnet = (1 << 32) - (1 << 32 >> int(self.Dhcp_Ipv4_submask[1]))
-        assert self.numToDottedQuad(subnet) in output,\
-            "Test to Reconfigure static IP address in static mode failed"
+        conf_ipv4 = IPV4_static+"/"+self.Dhcp_Ipv4_submask[1]
+        s1.cmdCLI("ip static "+conf_ipv4)
+        self.static_ip_config_check(conf_ipv4)
         info("### Successfully Reconfigured static"
              " IP address in static mode ###\n")
 
@@ -240,28 +260,7 @@ class mgmtIntfTests(OpsVsiTest):
         s1 = self.net.switches[0]
         IPV4_default = re.sub('\d+$', '130', self.Dhcp_Ipv4_submask[0])
         s1.cmdCLI("default-gateway "+IPV4_default)
-        output = s1.cmdCLI(" ")
-        cnt = 15
-        while cnt:
-            output = s1.cmdCLI("do show interface mgmt")
-            output += s1.cmd("echo")
-            output += s1.cmd("echo")
-            if IPV4_default in output:
-                cnt2 = 15
-                while cnt2:
-                    output = s1.cmd("ip route show")
-                    output += s1.cmd("echo")
-                    if IPV4_default in output:
-                        break
-                    else:
-                        cnt2 -= 1
-                        sleep(1)
-                break
-            else:
-                sleep(1)
-                cnt -= 1
-        assert IPV4_default in output,\
-            "Test to add Default gateway in static mode failed"
+        self.default_ipv4_configure_check(IPV4_default)
         info("### Successfully configured Default gateway"
              " in static mode ###\n")
 
@@ -270,14 +269,18 @@ class mgmtIntfTests(OpsVsiTest):
         s1 = self.net.switches[0]
         IPV4_default = re.sub('\d+$', '130', self.Dhcp_Ipv4_submask[0])
         s1.cmdCLI("no default-gateway "+IPV4_default)
-        output = s1.cmdCLI(" ")
-        output = s1.cmdCLI("do show interface mgmt")
-        output += s1.cmdCLI(" ")
-        temp = re.findall("Default gateway\s+: "+IPV4_default, output)
-        buf = ''
-        if temp:
-            buf = ' '
-        assert buf in output, 'Test to remove default gateway failed'
+        cnt = 15
+        while cnt:
+            output = s1.cmdCLI("do show interface mgmt")
+            output += s1.cmdCLI(" ")
+            temp = re.findall("Default gateway IPv4\s+: "+IPV4_default, output)
+            if temp:
+                sleep(1)
+                cnt -= 1
+            else:
+                break
+        assert "Default gateway IPv4\t\t: \n"in output,\
+               'Test to remove default gateway failed in show interface'
         cnt2 = 15
         while cnt2:
             output = s1.cmd("ip route show")
@@ -288,7 +291,7 @@ class mgmtIntfTests(OpsVsiTest):
                 cnt2 -= 1
                 sleep(1)
         assert IPV4_default not in output,\
-            'Test to remove default gateway failed'
+            'Test to remove default gateway failed in ip route'
         info('### Successfully Removed Default gateway in static mode ###\n')
 
     # Add IPv6 Default gateway in static mode when IPV4 configured.
@@ -310,7 +313,8 @@ class mgmtIntfTests(OpsVsiTest):
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
             output += s1.cmd("echo")
-            if '10.10.10.5' in output:
+            temp = re.findall("Primary Nameserver\s+: 10.10.10.5", output)
+            if temp:
                 cnt2 = 15
                 while cnt2:
                     output = s1.cmd("cat /etc/resolv.conf")
@@ -324,7 +328,8 @@ class mgmtIntfTests(OpsVsiTest):
             else:
                 sleep(1)
                 cnt -= 1
-        assert '10.10.10.5' in output, 'Test to add Primary DNS failed'
+        assert 'nameserver 10.10.10.5' in output,\
+               'Test to add Primary DNS failed'
         info('### Successfully configured Primary DNS in static mode ###\n')
 
     # Add another primary DNS server.
@@ -332,14 +337,12 @@ class mgmtIntfTests(OpsVsiTest):
         s1 = self.net.switches[0]
         s1.cmdCLI("nameserver 10.10.10.20")
         output = s1.cmdCLI(" ")
-        output = s1.cmdCLI("do show interface mgmt")
-        output = s1.cmd("cat /etc/resolv.conf")
         cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
             output += s1.cmd("echo")
-            output += s1.cmd("echo")
-            if '10.10.10.20' in output:
+            temp = re.findall("Primary Nameserver\s+: 10.10.10.20", output)
+            if temp:
                 cnt2 = 15
                 while cnt2:
                     output = s1.cmd("cat /etc/resolv.conf")
@@ -354,9 +357,9 @@ class mgmtIntfTests(OpsVsiTest):
             else:
                 sleep(1)
                 cnt -= 1
-        assert '10.10.10.20' in output,\
+        assert 'nameserver 10.10.10.20' in output,\
                'Test to Reconfigure Primary DNS failed'
-        assert '10.10.10.1' not in output,\
+        assert 'nameserver 10.10.10.1' not in output,\
                'Test to Reconfigure Primary DNS failed'
         info('### Successfully Reconfigured Primary DNS in static mode ###\n')
 
@@ -369,8 +372,7 @@ class mgmtIntfTests(OpsVsiTest):
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
             output += s1.cmd("echo")
-            output += s1.cmd("echo")
-            if 'Primary Nameserver            : 10.10.10.20' not in output:
+            if 'Primary Nameserver\s+: 10.10.10.20' not in output:
                 cnt2 = 15
                 while cnt2:
                     output = s1.cmd("cat /etc/resolv.conf")
@@ -384,7 +386,8 @@ class mgmtIntfTests(OpsVsiTest):
             else:
                 sleep(1)
                 cnt -= 1
-        assert '10.10.10.20' not in output, 'Test to Remove Primary DNS failed'
+        assert 'nameserver 10.10.10.20' not in output,\
+               'Test to Remove Primary DNS failed'
         info('### Successfully Removed Primary DNS in static mode ###\n')
 
     # Configure Secondary DNS Server in static mode.
@@ -396,7 +399,6 @@ class mgmtIntfTests(OpsVsiTest):
         cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
-            output += s1.cmd("echo")
             output += s1.cmd("echo")
             if re.findall("Primary Nameserver\s+: 10.10.10.4", output) and \
                re.findall("Secondary Nameserver\s+: 10.10.10.5", output):
@@ -414,20 +416,20 @@ class mgmtIntfTests(OpsVsiTest):
             else:
                 sleep(1)
                 cnt -= 1
-        assert '10.10.10.5' in output, 'Test to add Secondary DNS failed'
-        assert '10.10.10.4' in output, 'Test to add Secondary DNS failed'
+        assert 'nameserver 10.10.10.5' in output,\
+               'Test to add Secondary DNS failed'
+        assert 'nameserver 10.10.10.4' in output,\
+               'Test to add Secondary DNS failed'
         info('### Successfully Configured Secondary DNS in static mode ###\n')
 
     # Reconfigure Secondary DNS Server in static mode.
     def reconfig_secondary_ipv4_dns_static_mode(self):
         s1 = self.net.switches[0]
         s1.cmdCLI("nameserver 10.10.10.4 10.10.10.20")
-        output_show = s1.cmdCLI("do show interface mgmt")
         output = s1.cmdCLI(" ")
         cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
-            output += s1.cmd("echo")
             output += s1.cmd("echo")
             if re.findall("Primary Nameserver\s+: 10.10.10.4", output) and \
                re.findall("Secondary Nameserver\s+: 10.10.10.20", output):
@@ -446,11 +448,11 @@ class mgmtIntfTests(OpsVsiTest):
             else:
                 sleep(1)
                 cnt -= 1
-        assert '10.10.10.4' in output,\
+        assert 'nameserver 10.10.10.4' in output,\
                'Test to Reconfigure Secondary DNS failed'
-        assert '10.10.10.5' not in output,\
+        assert 'nameserver 10.10.10.5' not in output,\
                'Test to Reconfigure Secondary DNS failed'
-        assert '10.10.10.20' in output,\
+        assert 'nameserver 10.10.10.20' in output,\
                'Test to Reconfigure Secondary DNS failed'
         info("### Successfully Reconfigured Secondary"
              " DNS in static mode ###\n")
@@ -463,8 +465,11 @@ class mgmtIntfTests(OpsVsiTest):
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
             output += s1.cmd("echo")
-            output += s1.cmd("echo")
-            if '10.10.10.20' not in output:
+            if re.findall("Primary Nameserver\s+: 10.10.10.4", output) and \
+               re.findall("Secondary Nameserver\s+: 10.10.10.20", output):
+                sleep(1)
+                cnt -= 1
+            else:
                 cnt2 = 15
                 while cnt2:
                     output = s1.cmd("cat /etc/resolv.conf")
@@ -475,10 +480,7 @@ class mgmtIntfTests(OpsVsiTest):
                         cnt2 -= 1
                         sleep(1)
                 break
-            else:
-                sleep(1)
-                cnt -= 1
-        assert '10.10.10.20' not in output,\
+        assert 'nameserver 10.10.10.20' not in output,\
                'Test to Remove Secondary DNS failed'
         info('### Successfully Removed Secondary DNS in static mode ###\n')
 
@@ -628,19 +630,20 @@ class mgmtIntfTests(OpsVsiTest):
         s1.cmd("echo nameserver 1.1.1.1  > /etc/resolv.conf")
         s1.cmd("echo nameserver 2.2.2.2 >> /etc/resolv.conf")
 
-        out = s1.cmd("ifconfig eth0")
-        hostIpAddress = out.split("\n")[1].split()[1][5:]
+        out = s1.cmd("ip addr show dev eth0")
+        temp = re.findall("inet\s+\d+.\d+.\d+.\d+/\d+", out)
+        hostIpAddress = re.findall("\d+.\d+.\d+.\d+/\d+", temp[0])
         cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
             output += s1.cmd("echo")
             output += s1.cmd("echo")
-            if hostIpAddress in output:
+            if hostIpAddress[0] in output:
                 break
             else:
                 sleep(1)
                 cnt -= 1
-        assert hostIpAddress in output, "Test to verify IP got after "\
+        assert hostIpAddress[0] in output, "Test to verify IP got after "\
             "changed the mode from static to dhcp failed"
         info("### Successfully got the IP after changed "
              "the mode from static to dhcp ###\n")
@@ -681,6 +684,7 @@ class mgmtIntfTests(OpsVsiTest):
         s1.cmdCLI("configure terminal")
         s1.cmdCLI("interface mgmt")
         s1.cmdCLI("ip dhcp")
+        sleep(30)
         s1.cmdCLI("default-gateway 2001:db8:0:1::128")
         output = s1.cmdCLI(" ")
         output = s1.cmdCLI("do show interface mgmt")
@@ -718,54 +722,14 @@ class mgmtIntfTests(OpsVsiTest):
     def config_ipv6_on_mgmt_intf_static_mode(self):
         s1 = self.net.switches[0]
         s1.cmdCLI("ip static 2001:db8:0:1::156/64")
-        output = s1.cmdCLI(" ")
-        cnt = 15
-        while cnt:
-            output = s1.cmdCLI("do show interface mgmt")
-            output += s1.cmd("echo")
-            output += s1.cmd("echo")
-            if '2001:db8:0:1::156/64' in output:
-                cnt2 = 15
-                while cnt2:
-                    output = s1.cmd("ip -6 addr show dev eth0")
-                    output += s1.cmd("echo")
-                    if '2001:db8:0:1::156/64' in output:
-                        break
-                    else:
-                        cnt2 -= 1
-                        sleep(1)
-                break
-            else:
-                sleep(1)
-                cnt -= 1
-        assert '2001:db8:0:1::156/64' in output,\
-               'Test to add static IP address failed'
+        self.static_ip_config_check("2001:db8:0:1::156/64")
         info('### Successfully verified configure of Static IP ###\n')
 
     # Set the IPV6 again.
     def reconfig_ipv6_on_mgmt_intf_static_mode(self):
         s1 = self.net.switches[0]
         s1.cmdCLI("ip static 2001:db8:0:1::157/64")
-        output = s1.cmdCLI(" ")
-        cnt = 15
-        while cnt:
-            output = s1.cmdCLI("do show interface mgmt")
-            output += s1.cmd("echo")
-            if '2001:db8:0:1::157/64' in output:
-                cnt2 = 15
-                while cnt2:
-                    output = s1.cmd("ip -6 addr show dev eth0")
-                    if '2001:db8:0:1::157/64' in output:
-                        break
-                    else:
-                        cnt2 -= 1
-                        sleep(1)
-                break
-            else:
-                sleep(1)
-                cnt -= 1
-        assert '2001:db8:0:1::157/64' in output,\
-               'Test to Reconfigure static IP address failed'
+        self.static_ip_config_check("2001:db8:0:1::157/64")
         info('### Successfully verified Reconfigure of Static IP ###\n')
 
     # Set Invalid IPV6 on mgmt-intf.
@@ -964,7 +928,8 @@ class mgmtIntfTests(OpsVsiTest):
         while cnt:
             output_show = s1.cmdCLI("do show interface mgmt")
             output_show += s1.cmdCLI(" ")
-            if '2001:db8:0:1::144' in output_show:
+            if re.findall("Primary Nameserver\s+: 2001:db8:0:1::144",
+                          output_show):
                 cnt2 = 100
                 while cnt2:
                     output = s1.cmd("cat /etc/resolv.conf")
@@ -978,7 +943,7 @@ class mgmtIntfTests(OpsVsiTest):
             else:
                 sleep(1)
                 cnt -= 1
-        assert '2001:db8:0:1::144' in output,\
+        assert 'nameserver 2001:db8:0:1::144' in output,\
             'Test to add Primary DNS in static mode failed'
         info("### Successfully configured the "
              "Primary DNS in static mode ###\n")
@@ -992,7 +957,8 @@ class mgmtIntfTests(OpsVsiTest):
         while cnt:
             output_show = s1.cmdCLI("do show interface mgmt")
             output_show += s1.cmdCLI(" ")
-            if '2001:db8:0:1::154' in output_show:
+            if re.findall("Primary Nameserver\s+: 2001:db8:0:1::154",
+                          output_show):
                 cnt2 = 15
                 while cnt2:
                     output = s1.cmd("cat /etc/resolv.conf")
@@ -1007,9 +973,9 @@ class mgmtIntfTests(OpsVsiTest):
             else:
                 sleep(1)
                 cnt -= 1
-        assert '2001:db8:0:1::154' in output,\
+        assert 'nameserver 2001:db8:0:1::154' in output,\
             'Test to Reconfigure Primary DNS in static mode failed'
-        assert '2001:db8:0:1::144' not in output,\
+        assert 'nameserver 2001:db8:0:1::144' not in output,\
             'Test to Reconfigure Primary DNS in static mode failed'
         info("### Successfully Reconfigured the Primary "
              "DNS in static mode ###\n")
@@ -1037,7 +1003,7 @@ class mgmtIntfTests(OpsVsiTest):
                         cnt2 -= 1
                         sleep(1)
                 break
-        assert '2001:db8:0:1::154' not in output,\
+        assert 'nameserver 2001:db8:0:1::154' not in output,\
             'Test to Remove Primary DNS in static mode failed'
         info('### Successfully Removed Primary DNS in static mode ###\n')
 
@@ -1066,9 +1032,9 @@ class mgmtIntfTests(OpsVsiTest):
             else:
                 sleep(1)
                 cnt -= 1
-        assert '2001:db8:0:1::156' in output,\
+        assert 'nameserver 2001:db8:0:1::156' in output,\
             'Test to add Secondary DNS in static mode failed'
-        assert '2001:db8:0:1::150' in output,\
+        assert 'nameserver 2001:db8:0:1::150' in output,\
             'Test to add Secondary DNS in static mode failed'
         info('### Successfully Configured Secondary DNS in static mode ###\n')
 
@@ -1099,11 +1065,11 @@ class mgmtIntfTests(OpsVsiTest):
             else:
                 sleep(1)
                 cnt -= 1
-        assert '2001:db8:0:1::150' in output,\
+        assert 'nameserver 2001:db8:0:1::150' in output,\
             'Test to Reconfigure Secondary DNS in static mode failed'
-        assert '2001:db8:0:1::156' not in output,\
+        assert 'nameserver 2001:db8:0:1::156' not in output,\
             'Test to Reconfigure Secondary DNS in static mode failed'
-        assert '2001:db8:0:1::154' in output,\
+        assert 'nameserver 2001:db8:0:1::154' in output,\
             'Test to Reconfigure Secondary DNS in static mode failed'
         info("### Successfully Reconfigured Secondary DNS "
              "in static mode ###\n")
@@ -1116,7 +1082,13 @@ class mgmtIntfTests(OpsVsiTest):
         while cnt:
             output_show = s1.cmdCLI("do show interface mgmt")
             output_show += s1.cmdCLI(" ")
-            if '2001:db8:0:1::154' not in output_show:
+            if re.findall("Primary Nameserver\s+: 2001:db8:0:1::150",
+                          output_show) and \
+               re.findall("Secondary Nameserver\s+: 2001:db8:0:1::154",
+                          output_show):
+                sleep(1)
+                cnt -= 1
+            else:
                 cnt2 = 15
                 while cnt2:
                     output = s1.cmd("cat /etc/resolv.conf")
@@ -1127,10 +1099,7 @@ class mgmtIntfTests(OpsVsiTest):
                         cnt2 -= 1
                         sleep(1)
                 break
-            else:
-                sleep(1)
-                cnt -= 1
-        assert '2001:db8:0:1::154' not in output,\
+        assert 'nameserver 2001:db8:0:1::154' not in output,\
             'Test to Remove Secondary DNS in static mode failed'
         info('### Successfully Removed Secondary DNS in static mode ###\n')
 
@@ -1139,7 +1108,7 @@ class mgmtIntfTests(OpsVsiTest):
         s1 = self.net.switches[0]
         s1.cmdCLI("ip dhcp")
         output = s1.cmdCLI(" ")
-        time.sleep(5)
+        time.sleep(15)
         output = ''
         output = s1.cmdCLI("do show interface mgmt")
         output += s1.cmdCLI(" ")
@@ -1171,12 +1140,13 @@ class mgmtIntfTests(OpsVsiTest):
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
             output += s1.cmdCLI(" ")
-            if "2001:db8:0:1::150/64" not in output:
+            if re.findall("IPv6 address/prefix\s+: 2001:db8:0:1::150/64",
+                          output):
+                break
+            else:
                 sleep(1)
                 cnt -= 1
-            else:
-                break
-        assert "2001:db8:0:1::150/64" in output,\
+        assert "IPv6 address/prefix\t\t: 2001:db8:0:1::150/64" in output,\
             "Test to verify IP got after changed the mode"\
             " from static to dhcp failed"
         info("### Successfully got IP after changed the"
@@ -1189,12 +1159,12 @@ class mgmtIntfTests(OpsVsiTest):
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
             output += s1.cmdCLI(" ")
-            if "2001:db8:0:1::128" not in output:
+            if "Default gateway IPv6\t\t: 2001:db8:0:1::128" not in output:
                 sleep(1)
                 cnt -= 1
             else:
                 break
-        assert "2001:db8:0:1::128" in output,\
+        assert "Default gateway IPv6\t\t: 2001:db8:0:1::128" in output,\
             'Test to verify Default gateway got after changed the mode failed'
         info("### Successfully got the Default gateway after "
              "changed the mode Passed ###\n")
@@ -1207,37 +1177,13 @@ class mgmtIntfTests(OpsVsiTest):
         IPV4_static = re.sub('\d+$', '128', self.Dhcp_Ipv4_submask[0])
         s1.cmdCLI("ip dhcp")
         s1.cmdCLI(" ")
-        s1.cmdCLI(" ")
-        s1.cmdCLI("ip static "+IPV4_static+"/"+self.Dhcp_Ipv4_submask[1])
-        s1.cmdCLI("no ip static "+IPV4_static+"/"+self.Dhcp_Ipv4_submask[1])
-        output = s1.cmdCLI(" ")
-        cnt = 15
-        while cnt:
-            output = s1.cmdCLI("do show interface mgmt")
-            output += s1.cmd("echo")
-            output += s1.cmd("echo")
-            show_output = output
-            if IPV4_static not in output and \
-               self.Dhcp_Ipv4_submask[1] not in output:
-                cnt2 = 15
-                while cnt2:
-                    output = s1.cmd("ifconfig")
-                    output += s1.cmd("echo")
-                    if IPV4_static not in output and \
-                       self.Dhcp_Ipv4_submask[1] not in output:
-                        break
-                    else:
-                        cnt2 -= 1
-                        sleep(1)
-                break
-            else:
-                sleep(1)
-                cnt -= 1
-        assert IPV4_static not in output,\
-            'Test to remove static IP address in static mode failed'
-        subnet = (1 << 32) - (1 << 32 >> int(self.Dhcp_Ipv4_submask[1]))
-        assert self.numToDottedQuad(subnet) not in output,\
-            'Test to remove static IP address in static mode failed'
+        sleep(15)
+        conf_ipv4 = IPV4_static+"/"+self.Dhcp_Ipv4_submask[1]
+        output = s1.cmdCLI("ip static "+conf_ipv4)
+        self.static_ip_config_check(conf_ipv4)
+        s1.cmdCLI("no ip static "+conf_ipv4)
+        self.static_ip_unconfigure_check(conf_ipv4)
+        show_output = s1.cmdCLI("do show interface mgmt")
         assert 'dhcp' in show_output,\
             "DHCP mode change failed.Test to remove static "\
             "IP address in static mode failed"
@@ -1247,40 +1193,14 @@ class mgmtIntfTests(OpsVsiTest):
     def remove_ipv4_on_mgmt_intf_with_ipv6(self):
         s1 = self.net.switches[0]
         s1.cmdCLI("ip static 2001:db8:0:1::156/64")
+        self.static_ip_config_check("2001:db8:0:1::156/64")
         IPV4_static = re.sub('\d+$', '128', self.Dhcp_Ipv4_submask[0])
-        s1.cmdCLI("ip static " + IPV4_static+"/" + self.Dhcp_Ipv4_submask[1])
-        cmd_output = s1.cmdCLI("no ip static " + IPV4_static+"/" +
-                               self.Dhcp_Ipv4_submask[1])
-        cmd_output += s1.cmd("echo")
-        cmd_output += s1.cmd("echo")
-
-        cnt = 15
-        while cnt:
-            output = s1.cmdCLI("do show interface mgmt")
-            output += s1.cmd("echo")
-            output += s1.cmd("echo")
-            show_output = output
-            if IPV4_static not in output and \
-               self.Dhcp_Ipv4_submask[1] not in output:
-                cnt2 = 50
-                while cnt2:
-                    output = s1.cmd("ifconfig")
-                    output += s1.cmd("echo")
-                    if IPV4_static not in output and \
-                       self.Dhcp_Ipv4_submask[1] not in output:
-                        break
-                    else:
-                        cnt2 -= 1
-                        sleep(1)
-                break
-            else:
-                sleep(1)
-                cnt -= 1
-        assert IPV4_static not in output,\
-            'Test to remove static IP address with IPv6 failed'
-        subnet = (1 << 32) - (1 << 32 >> int(self.Dhcp_Ipv4_submask[1]))
-        assert self.numToDottedQuad(subnet) not in output,\
-            'Test to remove static IP address in with IPv6 failed'
+        conf_ipv4 = IPV4_static+"/" + self.Dhcp_Ipv4_submask[1]
+        s1.cmdCLI("ip static "+conf_ipv4)
+        self.static_ip_config_check(conf_ipv4)
+        cmd_output = s1.cmdCLI("no ip static " + conf_ipv4)
+        self.static_ip_unconfigure_check(conf_ipv4)
+        show_output = s1.cmdCLI("do show interface mgmt")
         assert 'static' in show_output,\
             'Wrong mode.Test to remove IP address in static mode failed'
         info("### Successfully removed IP address"
@@ -1291,38 +1211,12 @@ class mgmtIntfTests(OpsVsiTest):
         s1 = self.net.switches[0]
         IPV4_static = re.sub('\d+$', '128', self.Dhcp_Ipv4_submask[0])
         IPV4_default = re.sub('\d+$', '130', self.Dhcp_Ipv4_submask[0])
-        s1.cmdCLI("ip static " + IPV4_static + "/" + self.Dhcp_Ipv4_submask[1])
+        conf_ipv4 = IPV4_static+"/" + self.Dhcp_Ipv4_submask[1]
+        s1.cmdCLI("ip static " + conf_ipv4)
+        self.static_ip_config_check(conf_ipv4)
         s1.cmdCLI("default-gateway "+IPV4_default)
-        cmd_output = s1.cmdCLI("no ip static " + IPV4_static+"/" +
-                               self.Dhcp_Ipv4_submask[1])
-        cmd_output += s1.cmdCLI("echo")
-        cmd_output += s1.cmdCLI("echo")
-        cnt = 15
-        while cnt:
-            output = s1.cmdCLI("do show interface mgmt")
-            output += s1.cmd("echo")
-            output += s1.cmd("echo")
-            if IPV4_static in output and self.Dhcp_Ipv4_submask[1] in output:
-                cnt2 = 15
-                while cnt2:
-                    output = s1.cmd("ifconfig")
-                    output += s1.cmd("echo")
-                    if IPV4_static in output and \
-                       self.Dhcp_Ipv4_submask[1] in output:
-                        break
-                    else:
-                        cnt2 -= 1
-                        sleep(1)
-                break
-            else:
-                sleep(1)
-                cnt -= 1
-        assert IPV4_static in output, "Test to remove static IP "\
-            "address with default gateway in static mode failed"
-        subnet = (1 << 32) - (1 << 32 >> int(self.Dhcp_Ipv4_submask[1]))
-        assert self.numToDottedQuad(subnet) in output,\
-            "Test to remove static IP address with "\
-            "default gateway in static mode failed"
+        self.default_ipv4_configure_check(IPV4_default)
+        cmd_output = s1.cmdCLI("no ip static " + conf_ipv4)
         assert "Remove all IPv4 static configurations" in cmd_output,\
                "Test to remove static IP address with default gateway "\
                "in static mode failed"
@@ -1333,24 +1227,25 @@ class mgmtIntfTests(OpsVsiTest):
     def remove_ipv4_on_mgmt_intf_with_nameserver(self):
         s1 = self.net.switches[0]
         IPV4_static = re.sub('\d+$', '128', self.Dhcp_Ipv4_submask[0])
-        s1.cmdCLI("ip static " + IPV4_static+"/" + self.Dhcp_Ipv4_submask[1])
-        s1.cmdCLI("nameserver 10.10.10.20 10.10.10.30")
-        cmd_output = s1.cmdCLI("no ip static " + IPV4_static + "/" +
-                               self.Dhcp_Ipv4_submask[1])
-        cmd_output += s1.cmdCLI("echo")
-        cmd_output += s1.cmdCLI("echo")
+        conf_ipv4 = IPV4_static+"/" + self.Dhcp_Ipv4_submask[1]
+        s1.cmdCLI("ip static " + conf_ipv4)
+        self.static_ip_config_check(conf_ipv4)
+        s1.cmdCLI("nameserver 10.10.10.4 10.10.10.20")
+        output = s1.cmdCLI(" ")
         cnt = 15
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
             output += s1.cmd("echo")
             output += s1.cmd("echo")
-            if IPV4_static in output and self.Dhcp_Ipv4_submask[1] in output:
+            if re.findall("Primary Nameserver\s+: 10.10.10.4", output) and \
+               re.findall("Secondary Nameserver\s+: 10.10.10.20", output):
                 cnt2 = 15
                 while cnt2:
-                    output = s1.cmd("ifconfig")
+                    output = s1.cmd("cat /etc/resolv.conf")
                     output += s1.cmd("echo")
-                    if IPV4_static in output and \
-                       self.Dhcp_Ipv4_submask[1] in output:
+                    if 'nameserver 10.10.10.4' in output and \
+                       'nameserver 10.10.10.5' not in output and \
+                       'nameserver 10.10.10.20' in output:
                         break
                     else:
                         cnt2 -= 1
@@ -1359,13 +1254,13 @@ class mgmtIntfTests(OpsVsiTest):
             else:
                 sleep(1)
                 cnt -= 1
-        assert IPV4_static in output,\
-            "Test to remove static IP address "\
-            "with name server in static mode failed"
-        subnet = (1 << 32) - (1 << 32 >> int(self.Dhcp_Ipv4_submask[1]))
-        assert self.numToDottedQuad(subnet) in output,\
-            "Test to remove static IP address with "\
-            "name server in static mode failed"
+        assert '10.10.10.4' in output,\
+               'Test to Reconfigure Secondary DNS failed'
+        assert '10.10.10.5' not in output,\
+               'Test to Reconfigure Secondary DNS failed'
+        assert '10.10.10.20' in output,\
+               'Test to Reconfigure Secondary DNS failed'
+        cmd_output = s1.cmdCLI("no ip static " + conf_ipv4)
         assert "Remove all IPv4 static configurations" in cmd_output,\
                "Test to remove static IP address with name"\
                " server in static mode failed"
@@ -1376,24 +1271,23 @@ class mgmtIntfTests(OpsVsiTest):
     def remove_ipv4_on_mgmt_intf_with_nameserver_ipv6(self):
         s1 = self.net.switches[0]
         IPV4_static = re.sub('\d+$', '128', self.Dhcp_Ipv4_submask[0])
-        s1.cmdCLI("ip static " + IPV4_static+"/" + self.Dhcp_Ipv4_submask[1])
+        conf_ipv4 = IPV4_static+"/" + self.Dhcp_Ipv4_submask[1]
+        s1.cmdCLI("ip static " + conf_ipv4)
+        self.static_ip_config_check(conf_ipv4)
         s1.cmdCLI("nameserver 2001:db8:0:1::128 10.10.10.30")
-        cmd_output = s1.cmdCLI("no ip static " + IPV4_static + "/" +
-                               self.Dhcp_Ipv4_submask[1])
-        cmd_output += s1.cmdCLI("echo")
-        cmd_output += s1.cmdCLI("echo")
         cnt = 15
         while cnt:
-            output = s1.cmdCLI("do show interface mgmt")
-            output += s1.cmd("echo")
-            output += s1.cmd("echo")
-            if IPV4_static in output and self.Dhcp_Ipv4_submask[1] in output:
+            output_show = s1.cmdCLI("do show interface mgmt")
+            output_show += s1.cmdCLI(" ")
+            if re.findall("Primary Nameserver\s+: 2001:db8:0:1::128",
+               output_show) and re.findall("Secondary Nameserver\s+: "
+                                           "10.10.10.30", output_show):
                 cnt2 = 15
                 while cnt2:
-                    output = s1.cmd("ifconfig")
+                    output = s1.cmd("cat /etc/resolv.conf")
                     output += s1.cmd("echo")
-                    if IPV4_static in output and \
-                       self.Dhcp_Ipv4_submask[1] in output:
+                    if 'nameserver 2001:db8:0:1::128' in output and \
+                       'nameserver 10.10.10.30' in output:
                         break
                     else:
                         cnt2 -= 1
@@ -1402,13 +1296,12 @@ class mgmtIntfTests(OpsVsiTest):
             else:
                 sleep(1)
                 cnt -= 1
-        assert IPV4_static in output,\
-            "Test to remove static IP address with name server"\
-            " in static mode failed"
-        subnet = (1 << 32) - (1 << 32 >> int(self.Dhcp_Ipv4_submask[1]))
-        assert self.numToDottedQuad(subnet) in output,\
-            "Test to remove static IP address with name server"\
-            " in static mode failed"
+        assert '2001:db8:0:1::128' in output,\
+            'Test to add Secondary DNS in static mode failed'
+        assert '10.10.10.30' in output,\
+            'Test to add Secondary DNS in static mode failed'
+
+        cmd_output = s1.cmdCLI("no ip static " + conf_ipv4)
         assert "Remove all IPv4 static configurations" in cmd_output,\
                "Test to remove static IP address with mixed name server"\
                " in static mode failed"
@@ -1420,32 +1313,12 @@ class mgmtIntfTests(OpsVsiTest):
         s1 = self.net.switches[0]
         s1.cmdCLI("ip dhcp")
         s1.cmdCLI(" ")
-        s1.cmdCLI(" ")
+        sleep(15)
         s1.cmdCLI("ip static 2001:db8:0:1::156/64")
+        self.static_ip_config_check("2001:db8:0:1::156/64")
         cmd_output = s1.cmdCLI("no ip static 2001:db8:0:1::156/64")
-        output = s1.cmdCLI(" ")
-        cnt = 15
-        while cnt:
-            output = s1.cmdCLI("do show interface mgmt")
-            output += s1.cmd("echo")
-            output += s1.cmd("echo")
-            show_output = output
-            if '2001:db8:0:1::156/64' not in output:
-                cnt2 = 30
-                while cnt2:
-                    output = s1.cmd("ip -6 addr show dev eth0")
-                    output += s1.cmd("echo")
-                    if '2001:db8:0:1::156/64' not in output:
-                        break
-                    else:
-                        cnt2 -= 1
-                        sleep(1)
-                break
-            else:
-                sleep(1)
-                cnt -= 1
-        assert '2001:db8:0:1::156/64' not in output,\
-               'Test to remove static IPv6 address failed'
+        self.static_ip_unconfigure_check("2001:db8:0:1::156/64")
+        show_output = s1.cmdCLI("do show interface mgmt")
         assert 'dhcp' in show_output,\
                "DHCP mode change failed.Test to remove "\
                "static IPv6 address in static mode failed"
@@ -1455,32 +1328,14 @@ class mgmtIntfTests(OpsVsiTest):
     def remove_ipv6_on_mgmt_intf_with_ipv4(self):
         s1 = self.net.switches[0]
         s1.cmdCLI("ip static 2001:db8:0:1::156/64")
+        self.static_ip_config_check("2001:db8:0:1::156/64")
         IPV4_static = re.sub('\d+$', '128', self.Dhcp_Ipv4_submask[0])
-        s1.cmdCLI("ip static "+IPV4_static+"/"+self.Dhcp_Ipv4_submask[1])
+        conf_ipv4 = IPV4_static+"/"+self.Dhcp_Ipv4_submask[1]
+        s1.cmdCLI("ip static "+conf_ipv4)
+        self.static_ip_config_check(conf_ipv4)
         cmd_output = s1.cmdCLI("no ip static 2001:db8:0:1::156/64")
-        output = s1.cmdCLI(" ")
-        cnt = 15
-        while cnt:
-            output = s1.cmdCLI("do show interface mgmt")
-            output += s1.cmd("echo")
-            output += s1.cmd("echo")
-            show_output = output
-            if '2001:db8:0:1::156/64' not in output:
-                cnt2 = 15
-                while cnt2:
-                    output = s1.cmd("ip -6 addr show dev eth0")
-                    output += s1.cmd("echo")
-                    if '2001:db8:0:1::156/64' not in output:
-                        break
-                    else:
-                        cnt2 -= 1
-                        sleep(1)
-                break
-            else:
-                sleep(1)
-                cnt -= 1
-        assert '2001:db8:0:1::156/64' not in output,\
-               'Test to remove static IPv6 address with Ipv4 failed'
+        self.static_ip_unconfigure_check("2001:db8:0:1::156/64")
+        show_output = s1.cmdCLI("do show interface mgmt")
         assert 'static' in show_output,\
                'Wrong mode.Test to remove static IPv6 address with IPv4 failed'
         info('### Successfully removed Static IPv6 with Ipv4 ###\n')
@@ -1489,30 +1344,23 @@ class mgmtIntfTests(OpsVsiTest):
     def remove_ipv6_on_mgmt_intf_with_def_gw(self):
         s1 = self.net.switches[0]
         s1.cmdCLI("ip static 2001:db8:0:1::156/64")
+        self.static_ip_config_check("2001:db8:0:1::156/64")
         s1.cmdCLI("default-gateway 2001:db8:0:1::128")
-        cmd_output = s1.cmdCLI("no ip static 2001:db8:0:1::156/64")
-        cmd_output += s1.cmdCLI(" ")
-        cnt = 15
+        output = s1.cmdCLI(" ")
+        cnt = 30
         while cnt:
             output = s1.cmdCLI("do show interface mgmt")
             output += s1.cmd("echo")
             output += s1.cmd("echo")
-            if '2001:db8:0:1::156/64' in output:
-                cnt2 = 15
-                while cnt2:
-                    output = s1.cmd("ip -6 addr show dev eth0")
-                    output += s1.cmd("echo")
-                    if '2001:db8:0:1::156/64' in output:
-                        break
-                    else:
-                        cnt2 -= 1
-                        sleep(1)
+            if '2001:db8:0:1::128' in output:
                 break
             else:
                 sleep(1)
                 cnt -= 1
-        assert '2001:db8:0:1::156/64' in output,\
-               "Test to remove static IPv6 address with default gw failed"
+        assert '2001:db8:0:1::128' in output,\
+            "Test to add Default gateway in static mode failed"
+        cmd_output = s1.cmdCLI("no ip static 2001:db8:0:1::156/64")
+        cmd_output += s1.cmdCLI(" ")
         assert 'Remove all IPv6 static configurations' in cmd_output,\
                'Test to remove static IPv6 address with default gw failed'
         info("### Successfully verified to remove"
@@ -1522,20 +1370,22 @@ class mgmtIntfTests(OpsVsiTest):
     def remove_ipv6_on_mgmt_intf_with_nameserver(self):
         s1 = self.net.switches[0]
         s1.cmdCLI("ip static 2001:db8:0:1::156/64")
-        s1.cmdCLI("nameserver 2001:db8:0:1::128 2001:db8:0:1::130")
-        cmd_output = s1.cmdCLI("no ip static 2001:db8:0:1::156/64")
-        cmd_output += s1.cmdCLI(" ")
+        self.static_ip_config_check("2001:db8:0:1::156/64")
+        output = s1.cmdCLI(" ")
+        output = s1.cmdCLI("nameserver 2001:db8:0:1::150 2001:db8:0:1::156")
         cnt = 15
         while cnt:
-            output = s1.cmdCLI("do show interface mgmt")
-            output += s1.cmd("echo")
-            output += s1.cmd("echo")
-            if '2001:db8:0:1::156/64' in output:
+            output_show = s1.cmdCLI("do show interface mgmt")
+            output_show += s1.cmdCLI(" ")
+            if re.findall("Primary Nameserver\s+: 2001:db8:0:1::150",
+               output_show) and re.findall("Secondary Nameserver\s+: 2001:"
+                                           "db8:0:1::156", output_show):
                 cnt2 = 15
                 while cnt2:
-                    output = s1.cmd("ip -6 addr show dev eth0")
+                    output = s1.cmd("cat /etc/resolv.conf")
                     output += s1.cmd("echo")
-                    if '2001:db8:0:1::156/64' in output:
+                    if 'nameserver 2001:db8:0:1::156' in output and \
+                       'nameserver 2001:db8:0:1::150' in output:
                         break
                     else:
                         cnt2 -= 1
@@ -1544,8 +1394,12 @@ class mgmtIntfTests(OpsVsiTest):
             else:
                 sleep(1)
                 cnt -= 1
-        assert '2001:db8:0:1::156/64' in output,\
-               'Test to remove static IPv6 address with name server failed'
+        assert '2001:db8:0:1::156' in output,\
+            'Test to add Secondary DNS in static mode failed'
+        assert '2001:db8:0:1::150' in output,\
+            'Test to add Secondary DNS in static mode failed'
+        cmd_output = s1.cmdCLI("no ip static 2001:db8:0:1::156/64")
+        cmd_output += s1.cmdCLI(" ")
         assert 'Remove all IPv6 static configurations' in cmd_output,\
                'Test to remove static IPv6 address with name server failed'
         info("### Successfully verified to remove "
@@ -1555,20 +1409,21 @@ class mgmtIntfTests(OpsVsiTest):
     def remove_ipv6_on_mgmt_intf_with_nameserver_ipv4(self):
         s1 = self.net.switches[0]
         s1.cmdCLI("ip static 2001:db8:0:1::156/64")
+        self.static_ip_config_check("2001:db8:0:1::156/64")
         s1.cmdCLI("nameserver 10.10.10.20 2001:db8:0:1::130")
-        cmd_output = s1.cmdCLI("no ip static 2001:db8:0:1::156/64")
-        cmd_output += s1.cmdCLI(" ")
         cnt = 15
         while cnt:
-            output = s1.cmdCLI("do show interface mgmt")
-            output += s1.cmd("echo")
-            output += s1.cmd("echo")
-            if '2001:db8:0:1::156/64' in output:
+            output_show = s1.cmdCLI("do show interface mgmt")
+            output_show += s1.cmdCLI(" ")
+            if re.findall("Primary Nameserver\s+: 10.10.10.20",
+               output_show) and re.findall("Secondary Nameserver\s+: 2001:"
+                                           "db8:0:1::130", output_show):
                 cnt2 = 15
                 while cnt2:
-                    output = s1.cmd("ip -6 addr show dev eth0")
+                    output = s1.cmd("cat /etc/resolv.conf")
                     output += s1.cmd("echo")
-                    if '2001:db8:0:1::156/64' in output:
+                    if 'nameserver 10.10.10.20' in output and \
+                       'nameserver 2001:db8:0:1::130' in output:
                         break
                     else:
                         cnt2 -= 1
@@ -1577,8 +1432,12 @@ class mgmtIntfTests(OpsVsiTest):
             else:
                 sleep(1)
                 cnt -= 1
-        assert '2001:db8:0:1::156/64' in output,\
-            'Test to remove static IPv6 address with name server IPv4 failed'
+        assert '10.10.10.20' in output,\
+            'Test to add Secondary DNS in static mode failed'
+        assert '2001:db8:0:1::130' in output,\
+            'Test to add Secondary DNS in static mode failed'
+
+        cmd_output = s1.cmdCLI("no ip static 2001:db8:0:1::156/64")
         assert 'Remove all IPv6 static configurations' in cmd_output,\
                "Test to remove static IPv6 address"\
                " with name server IPv4 failed"
