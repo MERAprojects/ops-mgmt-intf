@@ -22,6 +22,7 @@ import struct
 import socket
 from time import sleep
 
+import re
 import ovs.dirs
 import ovs.daemon
 import ovs.db.idl
@@ -36,6 +37,7 @@ from struct import pack
 from pyroute2 import IPRoute
 from pyroute2.netlink import NetlinkError
 from pyroute2.netlink.rtnl.ifinfmsg import ifinfmsg
+from pyroute2.netlink.rtnl.ifaddrmsg import ifaddrmsg
 from pyroute2.netlink.rtnl import RTM_NEWADDR
 from pyroute2.netlink.rtnl import RTM_GETADDR
 from pyroute2.netlink.rtnl import RTM_DELADDR
@@ -62,6 +64,13 @@ RESTART_WAIT_TIME = 1
 MGMT_INTF_NULL_VAL = 'null'
 MGMT_INTF_NAMESERVER_STR_LEN = 11
 mgmt_interface_name = MGMT_INTF_NULL_VAL
+RTMGRP_LINK = 1
+RTMGRP_IPV4_IFADDR = 0x10
+RTMGRP_IPV6_IFADDR = 0x100
+IFA_F_DADFAILED = 0x08
+SO_BINDTODEVICE = 11
+RTNL_GROUPS = RTMGRP_LINK | RTMGRP_IPV4_IFADDR | RTMGRP_IPV6_IFADDR
+
 
 MGMT_INTF_KEY_NAME = "name"
 MGMT_INTF_KEY_MODE = "mode"
@@ -127,6 +136,18 @@ def mgmt_intf_unixctl_exit(conn, unused_argv, unused_aux):
 
     exiting = True
     conn.reply(None)
+
+
+# Funtion to get interface name by using interface index number.
+def mgmt_intf_get_interface_name(index):
+    nl = IPRoute()
+    try:
+        msg = nl.get_links(index)[0]
+        ifname = msg.get_attr('IFLA_IFNAME')
+    except Exception:
+        ifname = None
+    nl.close()
+    return ifname
 
 
 #  Function to empty the DNS's resolve.conf file.
@@ -1053,6 +1074,9 @@ def mgmt_intf_cfg_update(idl):
                 # Get the previously configured IPv6 if any and
                 # check if we are trying to update the same value.
                 prev_ip = status_data.get(MGMT_INTF_KEY_IPV6, DEFAULT_IPV6)
+                temp = re.match("^.+\d+", prev_ip)
+                if temp:
+                    prev_ip = temp.group(0)
                 if mgmt_intf_precheck_ipv6(mode_val, value, prev_ip):
                     if prev_ip != DEFAULT_IPV6:
                         # If IPv6 is set again the previous value has to be
@@ -1428,12 +1452,23 @@ def mgmt_intf_update_dhcp_param_ipv6(idl):
                                 for x in ipr.get_addr(index=dev,
                                                       family=AF_INET6,
                                                       scope=SCOPE_IPV6_GLOBAL)]
+            dhcp_flags_list = [x['flags']
+                               for x in ipr.get_addr(index=dev,
+                                                     family=AF_INET6,
+                                                     scope=SCOPE_IPV6_GLOBAL)]
             dhcp_prefix = dhcp_prefix_list[0]
             dhcp_addr_prefix = dhcp_ip + "/" + str(dhcp_prefix)
             # Update the ovsdb only if the already existing value is
             # different from the dhcp populated value.
+            flags_string = ""
             if (dhcp_ipv6 != dhcp_addr_prefix) and \
                     (dhcp_addr_prefix != DEFAULT_IPV6):
+                if (dhcp_flags_list[0] & IFA_F_DADFAILED) == IFA_F_DADFAILED:
+                    flags_string = " ["+"duplicate"+"]"
+                    vlog.info("Configuring %s address failed due to DAD "
+                              "Failure" % (dhcp_addr_prefix))
+                    dhcp_addr_prefix = dhcp_addr_prefix+flags_string
+
                 dhcp_ipv6 = dhcp_addr_prefix
                 is_updt = True
 
@@ -1620,8 +1655,38 @@ def mgmt_intf_update_link_state(idl, state):
                  "with status %s" % (status))
 
 
-# Function to handle link state changes.
-def mgmt_intf_up_down_event_handler(idl, ifname, event, msg_type):
+# Function to handle DAD event for ipv6
+def mgmt_intf_dad_event_handler(idl, ip_addr, flags):
+    status_data = {}
+    flag_str = ""
+    for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
+        if ovs_rec.mgmt_intf_status:
+            status_data = ovs_rec.mgmt_intf_status
+            break
+    if ((flags & IFA_F_DADFAILED) == IFA_F_DADFAILED):
+        flag_str = " [" + "duplicate" + "]"
+    status_data[MGMT_INTF_KEY_IPV6] = ip_addr+flag_str
+    vlog.info("Configuring %s address on management interface "
+              "failed due to DAD Failure" % (ip_addr))
+    txn = ovs.db.idl.Transaction(idl)
+    setattr(ovs_rec, "mgmt_intf_status", status_data)
+
+    status = txn.commit_block()
+    if status != "success" and status != "unchanged":
+    # will help us debug which updated failed.
+        vlog.err("Updating status column failed in DAD event handler "
+                 "with status %s" % (status))
+        return False
+    return True
+
+
+# Function to process mgmt_intf netlink event.
+def mgmt_intf_process_netlink_events(idl,
+                                     ifname,
+                                     event,
+                                     msg_type,
+                                     flags,
+                                     ip_addr):
     global mode_val
 
     status_data = {}
@@ -1635,10 +1700,16 @@ def mgmt_intf_up_down_event_handler(idl, ifname, event, msg_type):
                                               MGMT_INTF_NULL_VAL)
 
     if ifname != mgmt_intf:
+        vlog.dbg("Received event %s with msg type %s from "
+                 "non-management interface %s" % (event, msg_type, ifname))
         return
 
     vlog.info("Netlink event %s with message type %d received "
               "for management interface" % (event, msg_type))
+
+    if (msg_type == RTM_NEWADDR) \
+       and ((flags & IFA_F_DADFAILED) == IFA_F_DADFAILED):
+        return mgmt_intf_dad_event_handler(idl, ip_addr, flags)
 
     if (event == 'DOWN') or (event == 'UP'):
         mgmt_intf_update_link_state(idl, event)
@@ -1690,12 +1761,30 @@ def netlink_event_handler(idl, nl_socket):
         if data:
             msg_len, msg_type, flags, seq, pid = struct.unpack("=LHHLL",
                                                                data[:16])
-            msg = ifinfmsg(data)
-            msg.decode()
-            ifname = msg.get_attr('IFLA_IFNAME', '')
+            # Handle only link/address change notifications.
+            if msg_type in (RTM_NEWLINK, RTM_DELLINK):
+                msg = ifinfmsg(data)
+                msg.decode()
+            elif msg_type in (RTM_NEWADDR, RTM_DELADDR):
+                msg = ifaddrmsg(data)
+                msg.decode()
+            else:
+                return
+
+            # Get the Interface name from the event message.
+            ifname = msg.get_attr('IFLA_IFNAME') \
+                or mgmt_intf_get_interface_name(msg['index'])
             event = msg.get_attr('IFLA_OPERSTATE', '')
-            vlog.dbg("Netlink Events %s event %s" % (ifname, event))
-            mgmt_intf_up_down_event_handler(idl, ifname, event, msg_type)
+            flags = msg['flags']
+            ip_addr = ""
+            if msg_type in (RTM_NEWADDR, RTM_DELADDR):
+                ip_addr = msg.get_attr('IFA_ADDRESS')
+                pre_len = msg['prefixlen']
+                ip_addr = ip_addr+"/"+str(pre_len)
+            vlog.dbg("Netlink Events %s event %s "
+                     "flags %s" % (ifname, event, flags))
+            mgmt_intf_process_netlink_events(idl, ifname,
+                                             event, msg_type, flags, ip_addr)
 
 
 # Get the management interface name from the ovsdb.
@@ -1813,8 +1902,9 @@ def main():
     try:
         nl_socket = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW,
                                   socket.NETLINK_ROUTE)
-        nl_socket.bind((os.getpid(),  RTM_NEWADDR | RTM_DELADDR | RTM_NEWLINK
-                        | RTM_DELLINK))
+        nl_socket.bind((os.getpid(),  RTNL_GROUPS))
+        nl_socket.setsockopt(socket.SOL_SOCKET, SO_BINDTODEVICE,
+                             get_mgmt_interface_name(idl))
         nl_socket.setblocking(False)
     except socket.error as msg:
         vlog.err("Management Interface netlink Socket Error: %s" % msg)
