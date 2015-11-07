@@ -131,4 +131,4 @@ The `dhclient` is used as a DHCP client. The management interface starts or stop
 
 ##References
 
-* [Management Interface Command Reference - TBL](http://www.openswitch.net/docs/redest1)
+* [Management Interface Command Reference](/documents/user/mgmt_intf_cli)

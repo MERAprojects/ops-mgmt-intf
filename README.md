@@ -29,7 +29,7 @@ NA
 
 What other documents are available?
 -----------------------------------
-For the high level design of ops-mgmt-intf, refer to [Management Interface design - TBL](DESIGN.md)
-For Command Reference document of ops-mgmt-intf, refer to [Management Interface Command Reference - TBL](CLI.md)
+For the high level design of ops-mgmt-intf, refer to [Management Interface design](/documents/user/mgmt_intf_design)
+For Command Reference document of ops-mgmt-intf, refer to [Management Interface Command Reference](/documents/user/mgmt_intf_cli)
 
 For general information about OpenSwitch project refer to http://www.openswitch.net
