@@ -1217,9 +1217,11 @@ class mgmtIntfTests(OpsVsiTest):
         s1.cmdCLI("default-gateway "+IPV4_default)
         self.default_ipv4_configure_check(IPV4_default)
         cmd_output = s1.cmdCLI("no ip static " + conf_ipv4)
-        assert "Remove all IPv4 static configurations" in cmd_output,\
-               "Test to remove static IP address with default gateway "\
-               "in static mode failed"
+        assert "Remove all IPv4 related info (Default gateway/DNS address) "
+        "before removing the IP address from "
+        "this interface" in cmd_output,\
+            "Test to remove static IP address with default gateway "\
+            "in static mode failed"
         info("### Successfully verified to remove IP address with "
              "default gateway in static mode ###\n")
 
@@ -1261,9 +1263,11 @@ class mgmtIntfTests(OpsVsiTest):
         assert '10.10.10.20' in output,\
                'Test to Reconfigure Secondary DNS failed'
         cmd_output = s1.cmdCLI("no ip static " + conf_ipv4)
-        assert "Remove all IPv4 static configurations" in cmd_output,\
-               "Test to remove static IP address with name"\
-               " server in static mode failed"
+        assert "Remove all IPv4 related info (Default gateway/DNS address)"
+        " before removing the IP address from "
+        "this interface" in cmd_output,\
+            "Test to remove static IP address with name"\
+            " server in static mode failed"
         info("### Successfully verified to remove IP address with"
              " name server in static mode ###\n")
 
@@ -1302,9 +1306,11 @@ class mgmtIntfTests(OpsVsiTest):
             'Test to add Secondary DNS in static mode failed'
 
         cmd_output = s1.cmdCLI("no ip static " + conf_ipv4)
-        assert "Remove all IPv4 static configurations" in cmd_output,\
-               "Test to remove static IP address with mixed name server"\
-               " in static mode failed"
+        assert "Remove all IPv4 related info (Default gateway/DNS address)"
+        " before removing the IP address from "
+        " this interface" in cmd_output,\
+            "Test to remove static IP address with mixed name server"\
+            " in static mode failed"
         info("### Successfully verified to remove IP address with IPv6"
              " name server in static mode ###\n")
 
