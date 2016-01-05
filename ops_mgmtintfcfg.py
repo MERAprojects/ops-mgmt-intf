@@ -1852,6 +1852,21 @@ def wait_for_config_complete(idl):
         poller.block()
 
 
+def mgmt_intf_initialize(idl):
+
+    mgmt_intf = get_mgmt_interface_name(idl)
+
+    # Bring the interface up
+    try:
+        ip = IPRoute()
+        ip.link('set', index=ip.link_lookup(ifname=mgmt_intf)[0], state='up')
+        ip.close()
+    except NetlinkError as e:
+        vlog.err("Failed to bring management interface up with code %d"
+                 % e.code)
+        return False
+
+
 def main():
     global exiting
 
@@ -1909,6 +1924,8 @@ def main():
     except socket.error as msg:
         vlog.err("Management Interface netlink Socket Error: %s" % msg)
         sys.exit()
+
+    mgmt_intf_initialize(idl)
 
     mgmt_intf_dhcp_initialize(idl)
 
