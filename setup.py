@@ -18,8 +18,9 @@ from setuptools import setup
 setup(
     name='ops_mgmtintfcfg',
     version='1.0',
-    py_modules=['ops_mgmtintfcfg', 'dhcphostname'],
+    py_modules=['ops_mgmtintfcfg', 'dhcp_options'],
     entry_points={
-        'console_scripts': ['ops_mgmtintfcfg = ops_mgmtintfcfg:main', 'dhcphostname = dhcphostname:main',]
+        'console_scripts': ['ops_mgmtintfcfg = ops_mgmtintfcfg:main',
+            'dhcp_options = dhcp_options:main']
     }
 )

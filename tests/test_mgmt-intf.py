@@ -235,6 +235,114 @@ class mgmtIntfTests(OpsVsiTest):
         info("### Successfully verified configuration"
              " of Secondary DNS in DHCP mode ###\n")
 
+    # Add DNS Server 2 through dhclient in DHCP mode.
+    def config_secondary_ipv4_dns_by_dhclient_dhcp_mode(self):
+        s1 = self.net.switches[0]
+        s1.cmd("dhcp_options None 10.10.10.2 10.10.10.4")
+        output = s1.cmdCLI(" ")
+        cnt = 15
+        while cnt:
+            output = s1.cmdCLI("do show interface mgmt")
+            output += s1.cmd("echo")
+            temp = re.findall("Primary Nameserver\s+: 10.10.10.2", output)
+            temp2 = re.findall("Secondary Nameserver\s+: 10.10.10.4", output)
+            if temp and temp2:
+                break
+            else:
+                sleep(1)
+                cnt -= 1
+        assert '10.10.10.2' in output and \
+               '10.10.10.4' in output,\
+               'Test to add IPV4 secondary DNS by dhclient failed'
+        info("### Successfully configured IPV4 secondary DNS by "
+             "dhclient in dhcp mode ###\n")
+
+    # Add DNS Server 1 through dhclient in DHCP mode.
+    def config_primary_ipv4_dns_by_dhclient_dhcp_mode(self):
+        s1 = self.net.switches[0]
+        s1.cmd("dhcp_options None 10.10.10.5 None")
+        output = s1.cmdCLI(" ")
+        cnt = 15
+        while cnt:
+            output = s1.cmdCLI("do show interface mgmt")
+            output += s1.cmd("echo")
+            temp = re.findall("Primary Nameserver\s+: 10.10.10.5", output)
+            if temp:
+                break
+            else:
+                sleep(1)
+                cnt -= 1
+        assert '10.10.10.5' in output,\
+               'Test to add IPV4 primary DNS by dhclient failed'
+        info("### Successfully configured IPV4 primary DNS by "
+             "dhclient in dhcp mode ###\n")
+
+    # Modify DNS Server 1 & 2 through dhclient in DHCP mode.
+    def reconfig_primary_secondary_ipv4_dns_by_dhclient_dhcp_mode(self):
+        s1 = self.net.switches[0]
+        s1.cmd("dhcp_options None 10.10.10.2 10.10.10.4")
+        output = s1.cmdCLI(" ")
+        cnt = 15
+        while cnt:
+            output = s1.cmdCLI("do show interface mgmt")
+            output += s1.cmd("echo")
+            temp = re.findall("Primary Nameserver\s+: 10.10.10.2", output)
+            temp2 = re.findall("Secondary Nameserver\s+: 10.10.10.4", output)
+            if temp and temp2:
+                break
+            else:
+                sleep(1)
+                cnt -= 1
+        assert '10.10.10.2' in output and \
+               '10.10.10.4' in output,\
+               'Test to reconfigure IPV4 DNS1 and DNS2 by dhclient failed'
+        info("### Successfully reconfigured IPV4 primary and secondary DNS by "
+             "dhclient in dhcp mode ###\n")
+
+    # Remove primary and secondary DNS through dhclient in DHCP mode.
+    def remove_primary_secondary_ipv4_dns_by_dhclient_dhcp_mode(self):
+        s1 = self.net.switches[0]
+        s1.cmd("dhcp_options None None None")
+        output = s1.cmdCLI(" ")
+        cnt = 15
+        while cnt:
+            output = s1.cmdCLI("do show interface mgmt")
+            output += s1.cmd("echo")
+            temp = re.findall("Primary Nameserver\s+: 10.10.10.2", output)
+            temp2 = re.findall("Secondary Nameserver\s+: 10.10.10.4", output)
+            if temp and temp2:
+                sleep(1)
+                cnt -= 1
+            else:
+                break
+        assert '10.10.10.2' not in output and \
+               '10.10.10.4' not in output,\
+               'Test to remove IPV4 DNS1 and DNS2 by dhclient failed'
+        info("### Successfully removed IPV4 primary and secondary DNS by "
+             "dhclient in dhcp mode ###\n")
+
+    # Add DNS Server 2 through dhclient in DHCP mode.
+    def config_secondary_ipv4_dns_by_dhclient_dhcp_mode(self):
+        s1 = self.net.switches[0]
+        s1.cmd("dhcp_options None 10.10.10.2 10.10.10.4")
+        output = s1.cmdCLI(" ")
+        cnt = 15
+        while cnt:
+            output = s1.cmdCLI("do show interface mgmt")
+            output += s1.cmd("echo")
+            temp = re.findall("Primary Nameserver\s+: 10.10.10.2", output)
+            temp2 = re.findall("Secondary Nameserver\s+: 10.10.10.4", output)
+            if temp and temp2:
+                break
+            else:
+                sleep(1)
+                cnt -= 1
+        assert '10.10.10.2' in output and \
+               '10.10.10.4' in output,\
+               'Test to add Secondary DNS by dhclient is failed'
+        info("### Successfully configured Secondary DNS by "
+             "dhclient in dhcp mode ###\n")
+
     # Static IP config when mode is static.
     def config_ipv4_on_mgmt_intf_static_mode(self):
         s1 = self.net.switches[0]
@@ -717,6 +825,99 @@ class mgmtIntfTests(OpsVsiTest):
                'Test to add Secondary in DHCP mode failed'
         info("### Successfully verified configure of "
              "Secondary DNS in DHCP mode ###\n")
+
+    # config IPv6 DNS Server 2 through dhclient in DHCP mode.
+    def config_secondary_ipv6_dns_by_dhclient_dhcp_mode(self):
+        s1 = self.net.switches[0]
+        s1.cmd("dhcp_options None 2001:470:35:270::1  2001:470:35:270::2")
+        output = s1.cmdCLI(" ")
+        cnt = 15
+        while cnt:
+            output = s1.cmdCLI("do show interface mgmt")
+            output += s1.cmd("echo")
+            temp = re.findall("Primary Nameserver\s+: 2001:470:35:270::1",
+                              output)
+            temp2 = re.findall("Secondary Nameserver\s+: 2001:470:35:270::2",
+                               output)
+            if temp and temp2:
+                break
+            else:
+                sleep(1)
+                cnt -= 1
+        assert '2001:470:35:270::1' in output and \
+               '2001:470:35:270::2' in output,\
+               'Test to add IPv6 secondary DNS by dhclient failed'
+        info("### Successfully configured IPV6 secondary DNS by "
+             "dhclient in dhcp mode ###\n")
+
+    # Config IPv6 DNS Server 1 through dhclient in DHCP mode.
+    def config_primary_ipv6_dns_by_dhclient_dhcp_mode(self):
+        s1 = self.net.switches[0]
+        s1.cmd("dhcp_options None 2001:470:35:270::1 None")
+        output = s1.cmdCLI(" ")
+        cnt = 15
+        while cnt:
+            output = s1.cmdCLI("do show interface mgmt")
+            output += s1.cmd("echo")
+            temp = re.findall("Primary Nameserver\s+: 2001:470:35:270::1",
+                              output)
+            if temp:
+                break
+            else:
+                sleep(1)
+                cnt -= 1
+        assert '2001:470:35:270::1' in output,\
+               'Test to add IPv6 Primary DNS by dhclient failed'
+        info("### Successfully configured IPV6  Primary DNS by "
+             "dhclient in dhcp mode ###\n")
+
+    # reconfig IPv6 DNS Server 2 & 1 through dhclient in DHCP mode.
+    def reconfig_ipv6_dns_by_dhclient_dhcp_mode(self):
+        s1 = self.net.switches[0]
+        s1.cmd("dhcp_options None 2001:470:35:270::5  2001:470:35:270::6")
+        output = s1.cmdCLI(" ")
+        cnt = 15
+        while cnt:
+            output = s1.cmdCLI("do show interface mgmt")
+            output += s1.cmd("echo")
+            temp = re.findall("Primary Nameserver\s+: 2001:470:35:270::5",
+                              output)
+            temp2 = re.findall("Secondary Nameserver\s+: 2001:470:35:270::6",
+                               output)
+            if temp and temp2:
+                break
+            else:
+                sleep(1)
+                cnt -= 1
+        assert '2001:470:35:270::5' in output and \
+               '2001:470:35:270::6' in output,\
+               'Test to reconfigure IPv6 DNS1 and DNS2  by dhclient failed'
+        info("### Successfully reconfigured IPV6 DNS by "
+             "dhclient in dhcp mode ###\n")
+
+    # Remove IPV6 primary and secondary DNS through dhclient in DHCP mode.
+    def remove_primary_secondary_ipv6_dns_by_dhclient_dhcp_mode(self):
+        s1 = self.net.switches[0]
+        s1.cmd("dhcp_options None None None")
+        output = s1.cmdCLI(" ")
+        cnt = 15
+        while cnt:
+            output = s1.cmdCLI("do show interface mgmt")
+            output += s1.cmd("echo")
+            temp = re.findall("Primary Nameserver\s+: 2001:470:35:270::5",
+                              output)
+            temp2 = re.findall("Secondary Nameserver\s+: 2001:470:35:270::6",
+                               output)
+            if temp and temp2:
+                sleep(1)
+                cnt -= 1
+            else:
+                break
+        assert '2001:470:35:270::5' not in output and \
+               '2001:470:35:270::6' not in output,\
+               'Test to remove IPV6 DNS1 and DNS2  by dhclient failed'
+        info("### Successfully removed IPV6 Primary and secondary DNS by "
+             "dhclient in dhcp mode ###\n")
 
     # Static IPV6 config when mode is static.
     def config_ipv6_on_mgmt_intf_static_mode(self):
@@ -1217,9 +1418,8 @@ class mgmtIntfTests(OpsVsiTest):
         s1.cmdCLI("default-gateway "+IPV4_default)
         self.default_ipv4_configure_check(IPV4_default)
         cmd_output = s1.cmdCLI("no ip static " + conf_ipv4)
-        assert "Remove all IPv4 related info (Default gateway/DNS address) "
-        "before removing the IP address from "
-        "this interface" in cmd_output,\
+        assert "Remove all IPv4 related info (Default gateway/DNS address)"
+        " before removing the IP address from this interface" in cmd_output,\
             "Test to remove static IP address with default gateway "\
             "in static mode failed"
         info("### Successfully verified to remove IP address with "
@@ -1264,8 +1464,7 @@ class mgmtIntfTests(OpsVsiTest):
                'Test to Reconfigure Secondary DNS failed'
         cmd_output = s1.cmdCLI("no ip static " + conf_ipv4)
         assert "Remove all IPv4 related info (Default gateway/DNS address)"
-        " before removing the IP address from "
-        "this interface" in cmd_output,\
+        " before removing the IP address from this interface" in cmd_output,\
             "Test to remove static IP address with name"\
             " server in static mode failed"
         info("### Successfully verified to remove IP address with"
@@ -1307,8 +1506,7 @@ class mgmtIntfTests(OpsVsiTest):
 
         cmd_output = s1.cmdCLI("no ip static " + conf_ipv4)
         assert "Remove all IPv4 related info (Default gateway/DNS address)"
-        " before removing the IP address from "
-        " this interface" in cmd_output,\
+        " before removing the IP address from this interface" in cmd_output,\
             "Test to remove static IP address with mixed name server"\
             " in static mode failed"
         info("### Successfully verified to remove IP address with IPv6"
@@ -1531,7 +1729,7 @@ class mgmtIntfTests(OpsVsiTest):
     # Verify to set hostname through dhclient
     def set_hostname_by_dhclient(self):
         s1 = self.net.switches[0]
-        s1.cmd("dhcphostname dhcp-new")
+        s1.cmd("dhcp_options dhcp-new None None")
         cnt = 15
         while cnt:
             cmd_output = s1.ovscmd("ovs-vsctl list system")
@@ -1558,7 +1756,7 @@ class mgmtIntfTests(OpsVsiTest):
     # Verify to remove hostname through dhclient
     def remove_dhcp_hostname_by_dhclient(self):
         s1 = self.net.switches[0]
-        s1.cmd("dhcphostname " + 'null')
+        s1.cmd("dhcp_options None None None")
         cnt = 15
         while cnt:
             cmd_output = s1.ovscmd("ovs-vsctl list system")
@@ -1574,7 +1772,6 @@ class mgmtIntfTests(OpsVsiTest):
                 cnt -= 1
                 sleep(1)
         assert 'dhcp_hostname=' not in cmd_output and \
-               'hostname=switch' in cmd_output and \
                hostname == '' and \
                'switch' in output, \
             "Test to remove dhcp_hostname through dhclient"\
@@ -1634,6 +1831,18 @@ class Test_mgmt_intf:
 
     def test_config_secondary_ipv4_dns_dhcp_mode(self):
         self.test.config_secondary_ipv4_dns_dhcp_mode()
+
+    def test_config_secondary_ipv4_dns_by_dhclient_dhcp_mode(self):
+        self.test.config_secondary_ipv4_dns_by_dhclient_dhcp_mode()
+
+    def test_config_primary_ipv4_dns_by_dhclient_dhcp_mode(self):
+        self.test.config_primary_ipv4_dns_by_dhclient_dhcp_mode()
+
+    def test_reconfig_primary_secondary_ipv4_dns_by_dhclient_dhcp_mode(self):
+        self.test.reconfig_primary_secondary_ipv4_dns_by_dhclient_dhcp_mode()
+
+    def test_remove_primary_secondary_ipv4_dns_by_dhclient_dhcp_mode(self):
+        self.test.remove_primary_secondary_ipv4_dns_by_dhclient_dhcp_mode()
 
     def test_config_ipv4_on_mgmt_intf_static_mode(self):
         info("\n########## Test to configure Management "
@@ -1718,6 +1927,8 @@ class Test_mgmt_intf:
     def test_ipv4_default_gateway_got_after_populated_ipv4_config(self):
         self.test.ipv4_default_gateway_got_after_populated_ipv4_config()
 
+    @pytest.mark.skipif(True, reason="Disabling this testcase "
+                        "due to DHCP server dependencies")
     def test_dns_ipv4_got_after_populated_ipv4_config(self):
         self.test.dns_ipv4_got_after_populated_ipv4_config()
 
@@ -1731,6 +1942,18 @@ class Test_mgmt_intf:
 
     def test_config_secondary_ipv6_dns_dhcp_mode(self):
         self.test.config_secondary_ipv6_dns_dhcp_mode()
+
+    def test_config_secondary_ipv6_dns_by_dhclient_dhcp_mode(self):
+        self.test.config_secondary_ipv6_dns_by_dhclient_dhcp_mode()
+
+    def test_config_primary_ipv6_dns_by_dhclient_dhcp_mode(self):
+        self.test.config_primary_ipv6_dns_by_dhclient_dhcp_mode()
+
+    def test_reconfig_ipv6_dns_by_dhclient_dhcp_mode(self):
+        self.test.reconfig_ipv6_dns_by_dhclient_dhcp_mode()
+
+    def test_remove_primary_secondary_ipv6_dns_by_dhclient_dhcp_mode(self):
+        self.test.remove_primary_secondary_ipv6_dns_by_dhclient_dhcp_mode()
 
     def test_config_ipv6_on_mgmt_intf_static_mode(self):
         info("\n########## Test to configure Management "
@@ -1821,13 +2044,9 @@ class Test_mgmt_intf:
     def test_change_mode_from_static_to_dhcp_ipv6(self):
         self.test.change_mode_from_static_to_dhcp_ipv6()
 
-    @pytest.mark.skipif(True, reason="Disabling this testcase "
-                        "due to this Defect:203[Mgmt If - IPV6 handle DAD]")
     def test_ipv6_got_after_populated_ipv6_config(self):
         self.test.ipv6_got_after_populated_ipv6_config()
 
-    @pytest.mark.skipif(True, reason="Disabling this testcase "
-                        "due to this Defect:203[Mgmt If - IPV6 handle DAD]")
     def test_ipv6_default_gateway_got_after_populated_ipv6_config(self):
         self.test.ipv6_default_gateway_got_after_populated_ipv6_config()
 
