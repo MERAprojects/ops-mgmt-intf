@@ -35,6 +35,7 @@ OVS_SCHEMA = '/usr/share/openvswitch/vswitch.ovsschema'
 SYSTEM_TABLE = "System"
 MGMT_INTF_NULL_VAL = 'null'
 MGMT_INTF_KEY_DHCP_HOSTNAME = "dhcp_hostname"
+MGMT_INTF_KEY_DHCP_DOMAIN_NAME = "dhcp_domain_name"
 MGMT_INTF_KEY_DNS1 = "dns_server_1"
 MGMT_INTF_KEY_DNS2 = "dns_server_2"
 DEFAULT_IPV4 = '0.0.0.0'
@@ -81,7 +82,7 @@ def mgmt_intf_clear_dns_conf():
 
 
 # Function to update dhcp client parameter into ovsdb
-def update_mgmt_intf_status(hostname, dns_1, dns_2):
+def update_mgmt_intf_status(hostname, dns_1, dns_2, domainname):
     global idl
 
     status_data = {}
@@ -96,13 +97,21 @@ def update_mgmt_intf_status(hostname, dns_1, dns_2):
                                     MGMT_INTF_NULL_VAL)
     ovsdb_dns1 = status_data.get(MGMT_INTF_KEY_DNS1, DEFAULT_IPV4)
     ovsdb_dns2 = status_data.get(MGMT_INTF_KEY_DNS2, DEFAULT_IPV4)
-
+    dhcp_domainname = status_data.get(MGMT_INTF_KEY_DHCP_DOMAIN_NAME,
+                                      MGMT_INTF_NULL_VAL)
     if dhcp_hostname != hostname:
         if hostname != MGMT_INTF_NULL_VAL:
             status_data[MGMT_INTF_KEY_DHCP_HOSTNAME] = hostname
         else:
             del status_data[MGMT_INTF_KEY_DHCP_HOSTNAME]
         is_update = True
+    if domainname != dhcp_domainname:
+        if domainname != MGMT_INTF_NULL_VAL:
+            status_data[MGMT_INTF_KEY_DHCP_DOMAIN_NAME] = domainname
+        else:
+            del status_data[MGMT_INTF_KEY_DHCP_DOMAIN_NAME]
+        is_update = True
+
     if dns_1 != 'None':
         if dns_1 != ovsdb_dns1:
             status_data[MGMT_INTF_KEY_DNS1] = dns_1
@@ -141,6 +150,7 @@ def main():
     n_args = 2
     dns_1 = ''
     dns_2 = ''
+    domainname = ''
 
     if argv[1] != 'None':
         hostname = argv[1]
@@ -149,6 +159,11 @@ def main():
 
     dns_1 = argv[2]
     dns_2 = argv[3]
+    if argv[4] != 'None':
+        domainname = argv[4]
+    else:
+        domainname = MGMT_INTF_NULL_VAL
+
     # Locate default config if it exists
     schema_helper = ovs.db.idl.SchemaHelper(location=OVS_SCHEMA)
     schema_helper.register_columns(SYSTEM_TABLE, ["cur_cfg"])
@@ -168,7 +183,7 @@ def main():
 
     wait_for_config_complete(idl)
 
-    update_mgmt_intf_status(hostname, dns_1, dns_2)
+    update_mgmt_intf_status(hostname, dns_1, dns_2, domainname)
 
     idl.close()
 

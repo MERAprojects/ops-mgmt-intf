@@ -238,7 +238,7 @@ class mgmtIntfTests(OpsVsiTest):
     # Add DNS Server 2 through dhclient in DHCP mode.
     def config_secondary_ipv4_dns_by_dhclient_dhcp_mode(self):
         s1 = self.net.switches[0]
-        s1.cmd("dhcp_options None 10.10.10.2 10.10.10.4")
+        s1.cmd("dhcp_options None 10.10.10.2 10.10.10.4 None")
         output = s1.cmdCLI(" ")
         cnt = 15
         while cnt:
@@ -260,7 +260,7 @@ class mgmtIntfTests(OpsVsiTest):
     # Add DNS Server 1 through dhclient in DHCP mode.
     def config_primary_ipv4_dns_by_dhclient_dhcp_mode(self):
         s1 = self.net.switches[0]
-        s1.cmd("dhcp_options None 10.10.10.5 None")
+        s1.cmd("dhcp_options None 10.10.10.5 None None")
         output = s1.cmdCLI(" ")
         cnt = 15
         while cnt:
@@ -280,7 +280,7 @@ class mgmtIntfTests(OpsVsiTest):
     # Modify DNS Server 1 & 2 through dhclient in DHCP mode.
     def reconfig_primary_secondary_ipv4_dns_by_dhclient_dhcp_mode(self):
         s1 = self.net.switches[0]
-        s1.cmd("dhcp_options None 10.10.10.2 10.10.10.4")
+        s1.cmd("dhcp_options None 10.10.10.2 10.10.10.4 None")
         output = s1.cmdCLI(" ")
         cnt = 15
         while cnt:
@@ -302,7 +302,7 @@ class mgmtIntfTests(OpsVsiTest):
     # Remove primary and secondary DNS through dhclient in DHCP mode.
     def remove_primary_secondary_ipv4_dns_by_dhclient_dhcp_mode(self):
         s1 = self.net.switches[0]
-        s1.cmd("dhcp_options None None None")
+        s1.cmd("dhcp_options None None None None")
         output = s1.cmdCLI(" ")
         cnt = 15
         while cnt:
@@ -324,7 +324,7 @@ class mgmtIntfTests(OpsVsiTest):
     # Add DNS Server 2 through dhclient in DHCP mode.
     def config_secondary_ipv4_dns_by_dhclient_dhcp_mode(self):
         s1 = self.net.switches[0]
-        s1.cmd("dhcp_options None 10.10.10.2 10.10.10.4")
+        s1.cmd("dhcp_options None 10.10.10.2 10.10.10.4 None")
         output = s1.cmdCLI(" ")
         cnt = 15
         while cnt:
@@ -829,7 +829,7 @@ class mgmtIntfTests(OpsVsiTest):
     # config IPv6 DNS Server 2 through dhclient in DHCP mode.
     def config_secondary_ipv6_dns_by_dhclient_dhcp_mode(self):
         s1 = self.net.switches[0]
-        s1.cmd("dhcp_options None 2001:470:35:270::1  2001:470:35:270::2")
+        s1.cmd("dhcp_options None 2001:470:35:270::1  2001:470:35:270::2 None")
         output = s1.cmdCLI(" ")
         cnt = 15
         while cnt:
@@ -853,7 +853,7 @@ class mgmtIntfTests(OpsVsiTest):
     # Config IPv6 DNS Server 1 through dhclient in DHCP mode.
     def config_primary_ipv6_dns_by_dhclient_dhcp_mode(self):
         s1 = self.net.switches[0]
-        s1.cmd("dhcp_options None 2001:470:35:270::1 None")
+        s1.cmd("dhcp_options None 2001:470:35:270::1 None None")
         output = s1.cmdCLI(" ")
         cnt = 15
         while cnt:
@@ -874,7 +874,7 @@ class mgmtIntfTests(OpsVsiTest):
     # reconfig IPv6 DNS Server 2 & 1 through dhclient in DHCP mode.
     def reconfig_ipv6_dns_by_dhclient_dhcp_mode(self):
         s1 = self.net.switches[0]
-        s1.cmd("dhcp_options None 2001:470:35:270::5  2001:470:35:270::6")
+        s1.cmd("dhcp_options None 2001:470:35:270::5  2001:470:35:270::6 None")
         output = s1.cmdCLI(" ")
         cnt = 15
         while cnt:
@@ -898,7 +898,7 @@ class mgmtIntfTests(OpsVsiTest):
     # Remove IPV6 primary and secondary DNS through dhclient in DHCP mode.
     def remove_primary_secondary_ipv6_dns_by_dhclient_dhcp_mode(self):
         s1 = self.net.switches[0]
-        s1.cmd("dhcp_options None None None")
+        s1.cmd("dhcp_options None None None None")
         output = s1.cmdCLI(" ")
         cnt = 15
         while cnt:
@@ -1729,7 +1729,7 @@ class mgmtIntfTests(OpsVsiTest):
     # Verify to set hostname through dhclient
     def set_hostname_by_dhclient(self):
         s1 = self.net.switches[0]
-        s1.cmd("dhcp_options dhcp-new None None")
+        s1.cmd("dhcp_options dhcp-new None None None")
         cnt = 15
         while cnt:
             cmd_output = s1.ovscmd("ovs-vsctl list system")
@@ -1756,7 +1756,7 @@ class mgmtIntfTests(OpsVsiTest):
     # Verify to remove hostname through dhclient
     def remove_dhcp_hostname_by_dhclient(self):
         s1 = self.net.switches[0]
-        s1.cmd("dhcp_options None None None")
+        s1.cmd("dhcp_options None None None None")
         cnt = 15
         while cnt:
             cmd_output = s1.ovscmd("ovs-vsctl list system")
@@ -1777,6 +1777,117 @@ class mgmtIntfTests(OpsVsiTest):
             "Test to remove dhcp_hostname through dhclient"\
             " has failed"
         info("### Successfully verified to remove dhcp_hostname"
+             " by dhclient ###\n")
+
+    # Verify to configure system domainname through CLI
+    def config_set_domainname_from_cli(self):
+        s1 = self.net.switches[0]
+        s1.cmdCLI("end")
+        s1.cmdCLI("config terminal")
+        s1.cmdCLI("hostname  abc")
+        cnt = 15
+        while cnt:
+            output = s1.cmd("uname -n")
+            if "abc" in output:
+                break
+            else:
+                cnt -= 1
+                sleep(1)
+
+        s1.cmdCLI("domain-name cli")
+        cnt = 15
+        while cnt:
+            cmd_output = s1.ovscmd("ovs-vsctl list system")
+            domainname = s1.ovscmd("ovs-vsctl get system . "
+                                   "domain_name").rstrip('\r\n')
+            output = s1.cmd("uname -n")
+            if "domain_name=cli" in cmd_output and \
+               domainname == "cli" and \
+               "cli" in output:
+                break
+            else:
+                cnt -= 1
+                sleep(1)
+        assert 'domain_name=cli' in cmd_output and \
+               domainname == 'cli' and \
+               'cli' in output,\
+               "Test to set domainname through CLI"\
+               " has failed"
+        info("### Successfully verified configuring"
+             " domainname using CLI ###\n")
+
+    # Verify to unconfigure system domainname through CLI
+    def config_no_domainname_from_cli(self):
+        s1 = self.net.switches[0]
+        s1.cmdCLI("config terminal")
+        s1.cmdCLI("domain-name cli")
+        s1.cmdCLI("no domain-name")
+        cnt = 15
+        while cnt:
+            cmd_output = s1.ovscmd("ovs-vsctl list system")
+            domainname = s1.ovscmd("ovs-vsctl get system . "
+                                   "domain_name").rstrip('\r\n')
+            output = s1.cmd("uname -n")
+            if "hostname=abc" in cmd_output and \
+               domainname == '' and \
+               "cli" not in output:
+                break
+            else:
+                cnt -= 1
+                sleep(1)
+        assert 'hostname=abc' in cmd_output and \
+               domainname == '' and \
+               "cli" not in output,\
+               "Test to unset domainname through CLI"\
+               " has failed"
+        info("### Successfully verified reconfiguring"
+             " domainame to default value using CLI ###\n")
+
+    # Verify to set domainname through dhclient
+    def set_domainname_by_dhclient(self):
+        s1 = self.net.switches[0]
+        s1.cmd("dhcp_options None None None new_dom")
+        cnt = 15
+        while cnt:
+            cmd_output = s1.ovscmd("ovs-vsctl list system")
+            domainname = s1.ovscmd("ovs-vsctl get system . "
+                                   "domain_name").rstrip('\r\n')
+            if "dhcp_hostname=new_dom" in cmd_output and \
+               "domain_name=new_dom" in cmd_output and \
+               domainname == '':
+                break
+            else:
+                cnt -= 1
+                sleep(1)
+        assert 'dhcp_domain_name=new_dom' in cmd_output and \
+               'domain_name=new_dom' in cmd_output and \
+               domainname == '',\
+               "Test to set system domainname through dhclient"\
+               " has failed"
+        info("### Successfully verified to set system domain name"
+             " by dhclient ###\n")
+
+    # Verify to remove domainname through dhclient
+    def remove_dhcp_domainname_by_dhclient(self):
+        s1 = self.net.switches[0]
+        s1.cmd("dhcp_options None None None None")
+        cnt = 15
+        while cnt:
+            cmd_output = s1.ovscmd("ovs-vsctl list system")
+            domainname = s1.ovscmd("ovs-vsctl get system . "
+                                   "domain_name").rstrip('\r\n')
+            output = s1.cmd("uname -n")
+            if "dhcp_domain_name" not in cmd_output and \
+               domainname == '':
+                break
+            else:
+                cnt -= 1
+                sleep(1)
+        assert 'dhcp_domain_name' not in cmd_output and \
+               domainname == '',\
+               "Test to remove dhcp_domain_name through dhclient"\
+               " has failed"
+        info("### Successfully verified to remove dhcp_domain_name"
              " by dhclient ###\n")
 
     #Extra cleanup if test fails in middle.
@@ -2100,3 +2211,17 @@ class Test_mgmt_intf:
 
     def test_remove_dhcp_hostname_by_dhclient(self):
         self.test.remove_dhcp_hostname_by_dhclient()
+
+    def test_config_set_domainname_from_cli(self):
+        info("\n########## Test to configure System Domainname "
+             " ##########\n")
+        self.test.config_set_domainname_from_cli()
+
+    def test_config_no_domainname_from_cli(self):
+        self.test.config_no_domainname_from_cli()
+
+    def test_set_domainname_by_dhclient(self):
+        self.test.set_domainname_by_dhclient()
+
+    def test_remove_dhcp_domainname_by_dhclient(self):
+        self.test.remove_dhcp_domainname_by_dhclient()

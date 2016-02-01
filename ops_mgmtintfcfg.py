@@ -87,7 +87,10 @@ MGMT_INTF_KEY_IPV6_LINK_LOCAL = "ipv6_linklocal"
 MGMT_INTF_KEY_LINK_STATE = "link_state"
 MGMT_INTF_KEY_HOSTNAME = "hostname"
 MGMT_INTF_KEY_DHCP_HOSTNAME = "dhcp_hostname"
+MGMT_INTF_KEY_DOMAIN_NAME = "domain_name"
+MGMT_INTF_KEY_DHCP_DOMAIN_NAME = "dhcp_domain_name"
 MGMT_INTF_DEFAULT_HOSTNAME = "switch"
+MGMT_INTF_DEFAULT_DOMAIN_NAME = ""
 
 AF_INET = 2
 RT_TABLE_MAIN = 254
@@ -845,33 +848,67 @@ def mgmt_intf_precheck_dns(mode_val, value, prev_dns):
 # Only modified variables are handled.
 def mgmt_intf_cfg_update(idl):
     global mode_val
-
     mgmt_intf = MGMT_INTF_NULL_VAL
 
     status_data = {}
     status_col_updt_reqd = False
     hostname = MGMT_INTF_DEFAULT_HOSTNAME
-
+    domainname = MGMT_INTF_DEFAULT_DOMAIN_NAME
     # Retrieve the data from status table
     for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
         if ovs_rec.hostname:
             hostname = ovs_rec.hostname
         if ovs_rec.mgmt_intf_status:
             status_data = ovs_rec.mgmt_intf_status
+        if ovs_rec.domain_name:
+            if ovs_rec.domain_name[0] != MGMT_INTF_DEFAULT_DOMAIN_NAME:
+                domainname = ovs_rec.domain_name[0]
 
     status_hostname = status_data.get(MGMT_INTF_KEY_HOSTNAME,
                                       MGMT_INTF_NULL_VAL)
     dhcp_hostname = status_data.get(MGMT_INTF_KEY_DHCP_HOSTNAME,
                                     MGMT_INTF_NULL_VAL)
+    status_domainname = status_data.get(MGMT_INTF_KEY_DOMAIN_NAME,
+                                        MGMT_INTF_NULL_VAL)
+    dhcp_domainname = status_data.get(MGMT_INTF_KEY_DHCP_DOMAIN_NAME,
+                                      MGMT_INTF_NULL_VAL)
+    # Pick domainname if present in the hostname
+    if ("." in hostname) and \
+       (domainname == MGMT_INTF_DEFAULT_DOMAIN_NAME):
+        domainname = hostname.partition(".")[2]
 
     if (hostname == MGMT_INTF_DEFAULT_HOSTNAME) and \
        (dhcp_hostname != MGMT_INTF_NULL_VAL):
         hostname = dhcp_hostname
 
+    # Pick domainname from dhcp domainname
+    if (domainname == MGMT_INTF_DEFAULT_DOMAIN_NAME) and \
+       (hostname != MGMT_INTF_DEFAULT_HOSTNAME) and \
+       (dhcp_domainname != MGMT_INTF_NULL_VAL):
+        domainname = dhcp_domainname
+
+    # Remove domainname from hostname
+    if ("." in hostname) and \
+       (domainname != MGMT_INTF_DEFAULT_DOMAIN_NAME):
+        hostname = hostname.split(".")[0]
+
+    #hostname=hostname.domainname
+    # Construct the new hostname using domainname
+    if ("." not in hostname) and \
+       (domainname != MGMT_INTF_DEFAULT_DOMAIN_NAME):
+        hostname = hostname + "." + domainname
     # Set hostname status to value updated by CLI
     if hostname != status_hostname:
         status_data[MGMT_INTF_KEY_HOSTNAME] = hostname
         status_col_updt_reqd = True
+
+    # Set domainname status based on the domainname configured
+    if domainname != status_domainname:
+        status_data[MGMT_INTF_KEY_DOMAIN_NAME] = domainname
+        status_col_updt_reqd = True
+    if hostname == MGMT_INTF_DEFAULT_HOSTNAME:
+        status_data[MGMT_INTF_KEY_DOMAIN_NAME] = MGMT_INTF_DEFAULT_DOMAIN_NAME
+    if status_col_updt_reqd:
         os.system("hostname " + hostname)
 
     cfg_ip = DEFAULT_IPV4
@@ -907,6 +944,12 @@ def mgmt_intf_cfg_update(idl):
                         dhcp_hostname = \
                             status_data.get(MGMT_INTF_KEY_DHCP_HOSTNAME,
                                             MGMT_INTF_NULL_VAL)
+                        domainname = \
+                            status_data.get(MGMT_INTF_KEY_DOMAIN_NAME,
+                                            MGMT_INTF_NULL_VAL)
+                        dhcp_domainname = \
+                            status_data.get(MGMT_INTF_KEY_DHCP_DOMAIN_NAME,
+                                            MGMT_INTF_NULL_VAL)
 
                         mgmt_intf_clear_ipv6_param(mgmt_intf,
                                                    status_data.get(
@@ -935,6 +978,16 @@ def mgmt_intf_cfg_update(idl):
                                 dhcp_hostname
                             status_col_updt_reqd = True
 
+                        if domainname != MGMT_INTF_NULL_VAL:
+                            status_data[MGMT_INTF_KEY_DOMAIN_NAME] = \
+                                domainname
+                            status_col_updt_reqd = True
+
+                        if dhcp_domainname != MGMT_INTF_NULL_VAL:
+                            status_data[MGMT_INTF_KEY_DHCP_DOMAIN_NAME] = \
+                                dhcp_domainname
+                            status_col_updt_reqd = True
+
                     else:
                         # Mode is DHCP
                         # Link local will not be retrieved again.
@@ -950,6 +1003,12 @@ def mgmt_intf_cfg_update(idl):
                                             MGMT_INTF_NULL_VAL)
                         dhcp_hostname = \
                             status_data.get(MGMT_INTF_KEY_DHCP_HOSTNAME,
+                                            MGMT_INTF_NULL_VAL)
+                        domainname = \
+                            status_data.get(MGMT_INTF_KEY_DOMAIN_NAME,
+                                            MGMT_INTF_NULL_VAL)
+                        dhcp_domainname = \
+                            status_data.get(MGMT_INTF_KEY_DHCP_DOMAIN_NAME,
                                             MGMT_INTF_NULL_VAL)
 
                         mgmt_intf_clear_ipv6_param(mgmt_intf,
@@ -977,6 +1036,16 @@ def mgmt_intf_cfg_update(idl):
                         if dhcp_hostname != MGMT_INTF_NULL_VAL:
                             status_data[MGMT_INTF_KEY_DHCP_HOSTNAME] = \
                                 dhcp_hostname
+                            status_col_updt_reqd = True
+
+                        if domainname != MGMT_INTF_NULL_VAL:
+                            status_data[MGMT_INTF_KEY_DOMAIN_NAME] = \
+                                domainname
+                            status_col_updt_reqd = True
+
+                        if dhcp_domainname != MGMT_INTF_NULL_VAL:
+                            status_data[MGMT_INTF_KEY_DHCP_DOMAIN_NAME] = \
+                                dhcp_domainname
                             status_col_updt_reqd = True
 
                     mode_val = value
@@ -1202,6 +1271,8 @@ def mgmt_intf_get_status(idl):
     link_state = MGMT_INTF_NULL_VAL
     hostname = MGMT_INTF_NULL_VAL
     dhcp_hostname = MGMT_INTF_NULL_VAL
+    domainname = MGMT_INTF_NULL_VAL
+    dhcp_domainname = MGMT_INTF_NULL_VAL
 
     # Get the cuurent values from status column
     for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
@@ -1215,8 +1286,13 @@ def mgmt_intf_get_status(idl):
                                        MGMT_INTF_NULL_VAL)
             dhcp_hostname = status_data.get(MGMT_INTF_KEY_DHCP_HOSTNAME,
                                             MGMT_INTF_NULL_VAL)
+            domainname = status_data.get(MGMT_INTF_KEY_DOMAIN_NAME,
+                                         MGMT_INTF_NULL_VAL)
+            dhcp_domainname = status_data.get(MGMT_INTF_KEY_DHCP_DOMAIN_NAME,
+                                              MGMT_INTF_NULL_VAL)
 
-    return (ipv6_link_local, link_state, hostname, dhcp_hostname)
+    return (ipv6_link_local, link_state, hostname,
+            dhcp_hostname, domainname, dhcp_domainname)
 
 
 # Function to update the values populated by DHCP client to ovsdb.
@@ -1249,7 +1325,8 @@ def mgmt_intf_update_dhcp_param(idl):
         if ovs_rec.mgmt_intf_status:
             status_data = ovs_rec.mgmt_intf_status
 
-    ipv6_link_local, link_state, hostname, dhcp_hostname = \
+    ipv6_link_local, link_state, hostname, dhcp_hostname,\
+        domainname, dhcp_domainname = \
         mgmt_intf_get_status(idl)
     if ipv6_link_local != DEFAULT_IPV6:
         data[MGMT_INTF_KEY_IPV6_LINK_LOCAL] = ipv6_link_local
@@ -1262,6 +1339,12 @@ def mgmt_intf_update_dhcp_param(idl):
 
     if dhcp_hostname != MGMT_INTF_NULL_VAL:
         data[MGMT_INTF_KEY_DHCP_HOSTNAME] = dhcp_hostname
+
+    if domainname != MGMT_INTF_NULL_VAL:
+        data[MGMT_INTF_KEY_DOMAIN_NAME] = domainname
+
+    if dhcp_domainname != MGMT_INTF_NULL_VAL:
+        data[MGMT_INTF_KEY_DHCP_DOMAIN_NAME] = dhcp_domainname
 
     try:
         ipr = IPRoute()
@@ -1539,8 +1622,9 @@ def mgmt_intf_update_ipv6_linklocal(idl):
 
 
 # Function to clear values when address delete message is received.
-def mgmt_intf_address_delete_hdlr(idl, ipv6_link_local, link_state,
-                                  hostname, dhcp_hostname):
+def mgmt_intf_address_delete_hdlr(idl, ipv6_link_local,
+                                  link_state, hostname, dhcp_hostname,
+                                  domainname, dhcp_domainname):
     status_data = {}
     updt_status = False
 
@@ -1561,6 +1645,14 @@ def mgmt_intf_address_delete_hdlr(idl, ipv6_link_local, link_state,
 
     if dhcp_hostname != MGMT_INTF_NULL_VAL:
         status_data[MGMT_INTF_KEY_DHCP_HOSTNAME] = dhcp_hostname
+        updt_status = True
+
+    if domainname != MGMT_INTF_NULL_VAL:
+        status_data[MGMT_INTF_KEY_DOMAIN_NAME] = domainname
+        updt_status = True
+
+    if dhcp_domainname != MGMT_INTF_NULL_VAL:
+        status_data[MGMT_INTF_KEY_DHCP_DOMAIN_NAME] = dhcp_domainname
         updt_status = True
 
     if updt_status:
@@ -1677,8 +1769,10 @@ def mgmt_intf_process_netlink_events(idl,
             idl, status_data.get(MGMT_INTF_KEY_IPV6_LINK_LOCAL,
                                  DEFAULT_IPV6), event,
             status_data.get(MGMT_INTF_KEY_HOSTNAME, MGMT_INTF_NULL_VAL),
-            status_data.get(MGMT_INTF_KEY_DHCP_HOSTNAME, MGMT_INTF_NULL_VAL))
-
+            MGMT_INTF_NULL_VAL,
+            status_data.get(MGMT_INTF_KEY_DOMAIN_NAME, MGMT_INTF_NULL_VAL),
+            MGMT_INTF_NULL_VAL)
+        mgmt_intf_cfg_update(idl)
     elif (event == 'UP') or (msg_type == RTM_NEWLINK):
         mgmt_intf_start_dhcp_client(idl)
 
@@ -1691,8 +1785,11 @@ def mgmt_intf_process_netlink_events(idl,
             idl, status_data.get(MGMT_INTF_KEY_IPV6_LINK_LOCAL, DEFAULT_IPV6),
             status_data.get(MGMT_INTF_KEY_LINK_STATE, MGMT_INTF_NULL_VAL),
             status_data.get(MGMT_INTF_KEY_HOSTNAME, MGMT_INTF_NULL_VAL),
-            status_data.get(MGMT_INTF_KEY_DHCP_HOSTNAME, MGMT_INTF_NULL_VAL))
+            MGMT_INTF_NULL_VAL,
+            status_data.get(MGMT_INTF_KEY_DOMAIN_NAME, MGMT_INTF_NULL_VAL),
+            MGMT_INTF_NULL_VAL)
         dhcp_options.mgmt_intf_clear_dns_conf()
+        mgmt_intf_cfg_update(idl)
 
 
 # Netlink event handler.
@@ -1845,7 +1942,7 @@ def main():
     schema_helper.register_columns(SYSTEM_TABLE, ["mgmt_intf"])
     schema_helper.register_columns(SYSTEM_TABLE, ["mgmt_intf_status"])
     schema_helper.register_columns(SYSTEM_TABLE, ["hostname"])
-
+    schema_helper.register_columns(SYSTEM_TABLE, ["domain_name"])
     idl = ovs.db.idl.Idl(remote, schema_helper)
 
     ovs.daemon.daemonize()
