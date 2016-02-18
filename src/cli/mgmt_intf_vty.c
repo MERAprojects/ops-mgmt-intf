@@ -1281,6 +1281,9 @@ void cli_pre_init(void)
 {
     install_node (&mgmt_interface_node, NULL);
     vtysh_install_default (MGMT_INTERFACE_NODE);
+    install_show_run_config_context(e_vtysh_mgmt_interface_context,
+                                    &vtysh_mgmt_intf_context_clientcallback,
+                                    NULL, NULL);
 }
 
 
