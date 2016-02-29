@@ -1565,8 +1565,9 @@ class mgmtIntfTests(OpsVsiTest):
             "Test to add Default gateway in static mode failed"
         cmd_output = s1.cmdCLI("no ip static 2001:db8:0:1::156/64")
         cmd_output += s1.cmdCLI(" ")
-        assert 'Remove all IPv6 static configurations' in cmd_output,\
-               'Test to remove static IPv6 address with default gw failed'
+        assert "Remove all IPv6 related info (Default gateway/DNS address)"
+        " before removing the IP address from this interface." in cmd_output,\
+            'Test to remove static IPv6 address with default gw failed'
         info("### Successfully verified to remove"
              " Static IPv6 with default gw ###\n")
 
@@ -1604,8 +1605,9 @@ class mgmtIntfTests(OpsVsiTest):
             'Test to add Secondary DNS in static mode failed'
         cmd_output = s1.cmdCLI("no ip static 2001:db8:0:1::156/64")
         cmd_output += s1.cmdCLI(" ")
-        assert 'Remove all IPv6 static configurations' in cmd_output,\
-               'Test to remove static IPv6 address with name server failed'
+        assert "Remove all IPv6 related info (Default gateway/DNS address)"
+        " before removing the IP address from this interface." in cmd_output,\
+            'Test to remove static IPv6 address with name server failed'
         info("### Successfully verified to remove "
              "Static IPv6 with name server ###\n")
 
@@ -1642,9 +1644,10 @@ class mgmtIntfTests(OpsVsiTest):
             'Test to add Secondary DNS in static mode failed'
 
         cmd_output = s1.cmdCLI("no ip static 2001:db8:0:1::156/64")
-        assert 'Remove all IPv6 static configurations' in cmd_output,\
-               "Test to remove static IPv6 address"\
-               " with name server IPv4 failed"
+        assert "Remove all IPv6 related info (Default gateway/DNS address)"
+        " before removing the IP address from this interface." in cmd_output,\
+            "Test to remove static IPv6 address"\
+            " with name server IPv4 failed"
         info("### Successfully verified to remove "
              "Static IPv6 with IPv4 name server ###\n")
 

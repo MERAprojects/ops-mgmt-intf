@@ -62,6 +62,6 @@ void cli_post_init(void );
 "Remove all IPv4 related info (Default gateway/DNS address)" \
 " before removing the IP address from this interface."
 #define OVSDB_REMOVE_IPV6_STATIC_CONF  \
-"Remove all IPv6 static configurations."
-
+"Remove all IPv6 related info (Default gateway/DNS address)" \
+" before removing the IP address from this interface."
 #endif /* _VTY_MGMT_INTF_H */
