@@ -1,5 +1,5 @@
-/* Management interface client callback resigitration header file.
- * Copyright (C) 2015 Hewlett Packard Enterprise Development LP.
+/* Management interface client callback registration header file.
+ * Copyright (C) 2015-2016 Hewlett Packard Enterprise Development LP.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -25,7 +25,6 @@
 #ifndef VTYSH_OVSDB_MGMT_INTF_CONTEXT_H
 #define VTYSH_OVSDB_MGMT_INTF_CONTEXT_H
 
-int vtysh_init_mgmt_intf_context_clients(void);
 vtysh_ret_val vtysh_mgmt_intf_context_clientcallback(void *p_private);
 
 #endif /* VTYSH_OVSDB_MGMT_INTF_CONTEXT_H */

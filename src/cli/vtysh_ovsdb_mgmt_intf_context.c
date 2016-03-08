@@ -31,9 +31,6 @@
 #include "vtysh_ovsdb_mgmt_intf_context.h"
 #include "mgmt_intf_vty.h"
 
-char mgmt_intf_context_client_names[] = "vtysh_mgmt_intf_context_\
-                                                       clientcallback";
-
 /*
  * Function : vtysh_mgmt_intf_context_clientcallback.
  * Responsibility : client callback routine.
@@ -108,32 +105,4 @@ vtysh_mgmt_intf_context_clientcallback(void *p_private)
            vtysh_ovsdb_cli_print(p_msg, "%4snameserver %s", "", dns_1);
     }
     return e_vtysh_ok;
-}
-
-/*
- * Function : vtysh_init_mgmt_intf_context_clients.
- * Responsibility : Registers the client callback routines for
- *                  mgmt interface context.
- * Return : On success, returns e_vtysh_ok. On failure, returns erro_no.
- */
-int
-vtysh_init_mgmt_intf_context_clients()
-{
-  vtysh_context_client client;
-  vtysh_ret_val retval = e_vtysh_error;
-
-  client.p_client_name = mgmt_intf_context_client_names;
-  client.client_id = e_vtysh_mgmt_interface_context_config;
-  client.p_callback = &vtysh_mgmt_intf_context_clientcallback;
-  retval = vtysh_context_addclient(e_vtysh_mgmt_interface_context,
-                                   e_vtysh_mgmt_interface_context_config,
-                                   &client);
-  if (e_vtysh_ok != retval)
-  {
-    vtysh_ovsdb_config_logmsg(VTYSH_OVSDB_CONFIG_ERR,
-                      "Mgmt interface context unable to add config callback");
-    assert(0);
-    return retval;
-  }
-  return e_vtysh_ok;
 }

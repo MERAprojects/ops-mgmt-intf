@@ -1,6 +1,6 @@
 /* Management Interface CLI commands source file.
  *
- * Copyright (C) 2015 Hewlett Packard Enterprise Development LP.
+ * Copyright (C) 2015-2016 Hewlett Packard Enterprise Development LP.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -1279,11 +1279,22 @@ DEFUN (cli_no_mgmt_intf_set_default_gw,
  */
 void cli_pre_init(void)
 {
+    vtysh_ret_val retval = e_vtysh_error;
+
     install_node (&mgmt_interface_node, NULL);
     vtysh_install_default (MGMT_INTERFACE_NODE);
-    install_show_run_config_context(e_vtysh_mgmt_interface_context,
+
+    /* Initialize mgmt_intf context show running client callback function. */
+    retval = install_show_run_config_context(e_vtysh_mgmt_interface_context,
                                     &vtysh_mgmt_intf_context_clientcallback,
                                     NULL, NULL);
+    if(e_vtysh_ok != retval)
+    {
+        vtysh_ovsdb_config_logmsg(VTYSH_OVSDB_CONFIG_ERR,
+                       "Unable to add management interface context callback");
+        assert(0);
+    }
+    return;
 }
 
 
@@ -1322,6 +1333,4 @@ void cli_post_init(void)
     install_element (MGMT_INTERFACE_NODE, &mgmt_intf_no_set_dns_ipv6_ipv4_cmd);
 
     install_element (ENABLE_NODE, &mgmt_intf_show_cmd);
-    /* Initialize mgmt_intf context show running client callback function. */
-    vtysh_init_mgmt_intf_context_clients();
 }
