@@ -36,7 +36,56 @@ class mgmtIntfTests(OpsVsiTest):
     # IPv4 and it's subnet mask which is obtained from DHCP server.
     Dhcp_Ipv4_submask = ''
 
+    # DHCP dhclient is currently not running on VSI image due to
+    # dhclient_apparmor_profile [/etc/apparmor.d/sbin.dhclient] file,
+    # which is present on running host machine[VM].
+    # The Profile files will declare access rules to allow access to
+    # linux system resources. Implicitly the access is denied
+    # when there is no matching rule in the profile.
+    # If we want to run docker instance with dhclient on such a
+    # host machine, we have to disable the dhclient_apparmor_profile file
+    # and enable it once testcase execution is finished.
+
+    def disable_dhclient_profile(self):
+        if os.path.isfile("/etc/apparmor.d/sbin.dhclient") is True:
+            os.system("sudo ln -s /etc/apparmor.d/sbin.dhclient "
+                      "  /etc/apparmor.d/disable/")
+            os.system('sudo apparmor_parser -R /etc/apparmor.d/sbin.dhclient')
+
+    def enable_dhclient_profile(self):
+        if os.path.isfile("/etc/apparmor.d/sbin.dhclient") is True:
+            os.system('sudo rm /etc/apparmor.d/disable/sbin.dhclient')
+            os.system('sudo apparmor_parser -r /etc/apparmor.d/sbin.dhclient')
+
+    # When we run this test file with multiple instance,there is a chance of
+    # asynchronously enabling and disabling dhclient_profile file on the
+    # running system.
+    # To avoid asynchronous issue, the count variable is used to maintain
+    # the number of mgmt-intf test file execution instance in a temp file.
+    # whenever the count reaches zero, the profile file is enabled again.
+    def file_read_for_mgmt_instance_count(self):
+        file_fd = open('mgmt_sys_var', 'r')
+        count = file_fd.read()
+        count = re.search('\d+', count)
+        num = int(count.group(0))
+        file_fd.close()
+        return num
+
+    def file_write_for_mgmt_instance_count(self, count_number):
+        file_fd = open('mgmt_sys_var', 'w+')
+        file_fd.write(str(count_number))
+        file_fd.close()
+
     def setupNet(self):
+        if os.path.exists('mgmt_sys_var') is False:
+            self.file_write_for_mgmt_instance_count(0)
+        else:
+            count = self.file_read_for_mgmt_instance_count()
+            num = count + 1
+            self.file_write_for_mgmt_instance_count(num)
+
+        self.disable_dhclient_profile()
+
         # If you override this function, make sure to
         # either pass getNodeOpts() into hopts/sopts of the topology that
         # you build or into addHost/addSwitch calls.
@@ -48,11 +97,6 @@ class mgmtIntfTests(OpsVsiTest):
                            host=Host,
                            link=OpsVsiLink, controller=None,
                            build=True)
-        # Disabling dhclient profile on VM.
-        if os.path.isfile("/etc/apparmor.d/sbin.dhclient") is True:
-            os.system("sudo ln -s /etc/apparmor.d/sbin.dhclient "
-                      "  /etc/apparmor.d/disable/")
-            os.system('sudo apparmor_parser -R /etc/apparmor.d/sbin.dhclient')
 
     # Static IP configuration check
     def static_ip_config_check(self, conf_ip):
@@ -1370,9 +1414,9 @@ class mgmtIntfTests(OpsVsiTest):
         info("### Successfully got the Default gateway after "
              "changed the mode Passed ###\n")
 
-    #Tests to verify 'no ip static .. ' to remove static Ips
+    # Tests to verify 'no ip static .. ' to remove static Ips
 
-    #Verify to remove static IPv4 . Mode should be changed to 'dhcp'
+    # Verify to remove static IPv4 . Mode should be changed to 'dhcp'
     def remove_ipv4_on_mgmt_intf_static_mode(self):
         s1 = self.net.switches[0]
         IPV4_static = re.sub('\d+$', '128', self.Dhcp_Ipv4_submask[0])
@@ -1390,7 +1434,7 @@ class mgmtIntfTests(OpsVsiTest):
             "IP address in static mode failed"
         info('### Successfully removed IP address in static mode ###\n')
 
-    #Verify to remove static IPv4 with static Ipv6. Mode should not changed
+    # Verify to remove static IPv4 with static Ipv6. Mode should not changed
     def remove_ipv4_on_mgmt_intf_with_ipv6(self):
         s1 = self.net.switches[0]
         s1.cmdCLI("ip static 2001:db8:0:1::156/64")
@@ -1407,7 +1451,7 @@ class mgmtIntfTests(OpsVsiTest):
         info("### Successfully removed IP address"
              " with static IPv6 address  ###\n")
 
-    #Verify to remove static IPv4 with default gw. Should not be removed
+    # Verify to remove static IPv4 with default gw. Should not be removed
     def remove_ipv4_on_mgmt_intf_with_def_gw(self):
         s1 = self.net.switches[0]
         IPV4_static = re.sub('\d+$', '128', self.Dhcp_Ipv4_submask[0])
@@ -1425,7 +1469,7 @@ class mgmtIntfTests(OpsVsiTest):
         info("### Successfully verified to remove IP address with "
              "default gateway in static mode ###\n")
 
-    #Verify to remove static IPv4 with name server. Should not be removed
+    # Verify to remove static IPv4 with name server. Should not be removed
     def remove_ipv4_on_mgmt_intf_with_nameserver(self):
         s1 = self.net.switches[0]
         IPV4_static = re.sub('\d+$', '128', self.Dhcp_Ipv4_submask[0])
@@ -1470,7 +1514,7 @@ class mgmtIntfTests(OpsVsiTest):
         info("### Successfully verified to remove IP address with"
              " name server in static mode ###\n")
 
-    #verify to remove static Ipv4 with mixed name server. should not be removed
+    # verify to remove static Ipv4 with mixed name server should not be removed
     def remove_ipv4_on_mgmt_intf_with_nameserver_ipv6(self):
         s1 = self.net.switches[0]
         IPV4_static = re.sub('\d+$', '128', self.Dhcp_Ipv4_submask[0])
@@ -1791,7 +1835,9 @@ class mgmtIntfTests(OpsVsiTest):
         cnt = 15
         while cnt:
             output = s1.cmd("uname -n")
-            if "abc" in output:
+            ovs_out = s1.ovscmd("ovs-vsctl list system")
+            if "hostname=abc" in ovs_out and \
+               "abc" in output:
                 break
             else:
                 cnt -= 1
@@ -1893,7 +1939,7 @@ class mgmtIntfTests(OpsVsiTest):
         info("### Successfully verified to remove dhcp_domain_name"
              " by dhclient ###\n")
 
-    #Extra cleanup if test fails in middle.
+    # Extra cleanup if test fails in middle.
     def mgmt_intf_cleanup(self):
         s1 = self.net.switches[0]
         output = s1.cmd("ip netns exec swns ip addr show dev 1")
@@ -1911,10 +1957,20 @@ class Test_mgmt_intf:
         # Stop the Docker containers, and
         # mininet topology.
         Test_mgmt_intf.test.net.stop()
+        Enable = False
+
+        if os.path.exists('mgmt_sys_var') is True:
+            num = Test_mgmt_intf.test.file_read_for_mgmt_instance_count()
+            if num == 0:
+                Enable = True
+            else:
+                num = num - 1
+                Test_mgmt_intf.test.file_write_for_mgmt_instance_count(num)
+
         # Enabling dhclient.profile on VM.
-        if os.path.isfile("/etc/apparmor.d/sbin.dhclient") is True:
-            os.system('sudo rm /etc/apparmor.d/disable/sbin.dhclient')
-            os.system('sudo apparmor_parser -r /etc/apparmor.d/sbin.dhclient')
+        if Enable is True:
+            Test_mgmt_intf.test.enable_dhclient_profile()
+            os.system('rm mgmt_sys_var')
 
     def teardown_method(self, method):
         self.test.mgmt_intf_cleanup()
