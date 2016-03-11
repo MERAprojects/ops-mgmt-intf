@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# (c) Copyright [2015] Hewlett Packard Enterprise Development LP
+# (c) Copyright [2015-2016] Hewlett Packard Enterprise Development LP
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -99,12 +99,18 @@ def update_mgmt_intf_status(hostname, dns_1, dns_2, domainname):
     ovsdb_dns2 = status_data.get(MGMT_INTF_KEY_DNS2, DEFAULT_IPV4)
     dhcp_domainname = status_data.get(MGMT_INTF_KEY_DHCP_DOMAIN_NAME,
                                       MGMT_INTF_NULL_VAL)
+    # Storing hostname as received from host-name option from dhcp server.
+    # This may or may not be resolvable by the local domain
+    # Eg: www.nx1,www,etc.
     if dhcp_hostname != hostname:
         if hostname != MGMT_INTF_NULL_VAL:
             status_data[MGMT_INTF_KEY_DHCP_HOSTNAME] = hostname
         else:
             del status_data[MGMT_INTF_KEY_DHCP_HOSTNAME]
         is_update = True
+    # Storing domainname as received from domain-name option from dhcp server.
+    # This would be used to resolv various hosts during dns queries
+    # Eg: slave.example.com,internal.example.com,example.com,etc.
     if domainname != dhcp_domainname:
         if domainname != MGMT_INTF_NULL_VAL:
             status_data[MGMT_INTF_KEY_DHCP_DOMAIN_NAME] = domainname

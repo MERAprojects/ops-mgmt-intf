@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# (c) Copyright [2015] Hewlett Packard Enterprise Development LP
+# (c) Copyright [2015-2016] Hewlett Packard Enterprise Development LP
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -382,21 +382,22 @@ def mgmt_intf_clear_status_col(idl):
 
 # Function to update the resolved conf file with the values statically
 # configured by the user.
-def mgmt_intf_update_dns_conf(dns_1, dns_2):
+def mgmt_intf_update_dns_conf(dns_1, dns_2, domain):
 
     cmd = ""
     if dns_1 != DEFAULT_IPV4:
         cmd = "DNS= %s" % (dns_1)
     if dns_2 != DEFAULT_IPV4:
         cmd += " %s" % (dns_2)
-
     try:
         cmd = ""
         if dns_1 != DEFAULT_IPV4:
             cmd = "nameserver %s\n" % (dns_1)
         if dns_2 != DEFAULT_IPV4:
             cmd += "nameserver %s\n" % (dns_2)
-
+        if (domain != MGMT_INTF_DEFAULT_DOMAIN_NAME) and \
+           (domain != MGMT_INTF_NULL_VAL):
+            cmd += "domain %s\n" % (domain)
         fd = open(DNS_FILE, 'w')
         fd.write(cmd)
         fd.close()
@@ -872,31 +873,15 @@ def mgmt_intf_cfg_update(idl):
                                         MGMT_INTF_NULL_VAL)
     dhcp_domainname = status_data.get(MGMT_INTF_KEY_DHCP_DOMAIN_NAME,
                                       MGMT_INTF_NULL_VAL)
-    # Pick domainname if present in the hostname
-    if ("." in hostname) and \
-       (domainname == MGMT_INTF_DEFAULT_DOMAIN_NAME):
-        domainname = hostname.partition(".")[2]
-
     if (hostname == MGMT_INTF_DEFAULT_HOSTNAME) and \
        (dhcp_hostname != MGMT_INTF_NULL_VAL):
         hostname = dhcp_hostname
 
     # Pick domainname from dhcp domainname
     if (domainname == MGMT_INTF_DEFAULT_DOMAIN_NAME) and \
-       (hostname != MGMT_INTF_DEFAULT_HOSTNAME) and \
        (dhcp_domainname != MGMT_INTF_NULL_VAL):
         domainname = dhcp_domainname
 
-    # Remove domainname from hostname
-    if ("." in hostname) and \
-       (domainname != MGMT_INTF_DEFAULT_DOMAIN_NAME):
-        hostname = hostname.split(".")[0]
-
-    #hostname=hostname.domainname
-    # Construct the new hostname using domainname
-    if ("." not in hostname) and \
-       (domainname != MGMT_INTF_DEFAULT_DOMAIN_NAME):
-        hostname = hostname + "." + domainname
     # Set hostname status to value updated by CLI
     if hostname != status_hostname:
         status_data[MGMT_INTF_KEY_HOSTNAME] = hostname
@@ -906,10 +891,13 @@ def mgmt_intf_cfg_update(idl):
     if domainname != status_domainname:
         status_data[MGMT_INTF_KEY_DOMAIN_NAME] = domainname
         status_col_updt_reqd = True
-    if hostname == MGMT_INTF_DEFAULT_HOSTNAME:
-        status_data[MGMT_INTF_KEY_DOMAIN_NAME] = MGMT_INTF_DEFAULT_DOMAIN_NAME
+
     if status_col_updt_reqd:
         os.system("hostname " + hostname)
+    # Add domainname entry in resolv.conf
+    dns_1 = status_data.get(MGMT_INTF_KEY_DNS1, DEFAULT_IPV4)
+    dns_2 = status_data.get(MGMT_INTF_KEY_DNS2, DEFAULT_IPV4)
+    mgmt_intf_update_dns_conf(dns_1, dns_2, domainname)
 
     cfg_ip = DEFAULT_IPV4
     dns1 = DEFAULT_IPV4
@@ -956,7 +944,9 @@ def mgmt_intf_cfg_update(idl):
                                                        MGMT_INTF_KEY_DEF_GW_V6,
                                                        DEFAULT_IPV6))
                         mgmt_intf_dhcp_cleanup(idl, mgmt_intf)
-
+                        #The system configured domain name should be updated
+                        mgmt_intf_update_dns_conf(DEFAULT_IPV4,
+                                                  DEFAULT_IPV4, domainname)
                         status_data = {}
                         if ipv6_link_local != DEFAULT_IPV6:
                             status_data[MGMT_INTF_KEY_IPV6_LINK_LOCAL] = \
@@ -1191,8 +1181,8 @@ def mgmt_intf_cfg_update(idl):
                     if prev_dns != DEFAULT_IPV4:
                         # We cannot configure secondary without primary.
                         # So flush the dns values
-                        dhcp_options.mgmt_intf_clear_dns_conf()
-
+                        mgmt_intf_update_dns_conf(DEFAULT_IPV4, DEFAULT_IPV4,
+                                                  domainname)
                     # no nameserver <ip-addr case>.
                     if (value == DEFAULT_IPV4) or (value == DEFAULT_IPV6):
                         '''
@@ -1208,7 +1198,8 @@ def mgmt_intf_cfg_update(idl):
                     else:
                         # If adding dns1 fails then dns1 will not be updated in
                         # status column, so that it will be retried again.
-                        if mgmt_intf_update_dns_conf(value, DEFAULT_IPV4):
+                        if mgmt_intf_update_dns_conf(value, DEFAULT_IPV4,
+                                                     domainname):
                             status_data[MGMT_INTF_KEY_DNS1] = value
                             status_col_updt_reqd = True
 
@@ -1223,7 +1214,8 @@ def mgmt_intf_cfg_update(idl):
                     # no nameserver <dns1-ip-addr> <dns2-ip-addr> case.
                     if ((value == DEFAULT_IPV4) or (value == DEFAULT_IPV6)) \
                             and (dns2 != DEFAULT_IPV4):
-                        dhcp_options.mgmt_intf_clear_dns_conf()
+                        mgmt_intf_update_dns_conf(DEFAULT_IPV4, DEFAULT_IPV4,
+                                                  domainname)
                         '''
                          DNS1 would have been deleted already in DNS1 handler.
                          So delete DNS2 alone here.
@@ -1238,12 +1230,14 @@ def mgmt_intf_cfg_update(idl):
                             # Delete old one and then configure new one.
                             if prev_dns != DEFAULT_IPV4:
                                 # Remove the previous dns2 alone
-                                mgmt_intf_update_dns_conf(dns1, DEFAULT_IPV4)
+                                mgmt_intf_update_dns_conf(dns1, DEFAULT_IPV4,
+                                                          domainname)
 
                             # If adding dns1 fails then dns1 will not be
                             # updated in status column, so that it will be
                             # retried again.
-                            if mgmt_intf_update_dns_conf(dns1, value):
+                            if mgmt_intf_update_dns_conf(dns1, value,
+                                                         domainname):
                                 status_data[MGMT_INTF_KEY_DNS2] = value
                                 status_col_updt_reqd = True
         else:

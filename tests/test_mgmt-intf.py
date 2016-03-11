@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# (c) Copyright [2015] Hewlett Packard Enterprise Development LP
+# (c) Copyright [2015-2016] Hewlett Packard Enterprise Development LP
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -1831,35 +1831,23 @@ class mgmtIntfTests(OpsVsiTest):
         s1 = self.net.switches[0]
         s1.cmdCLI("end")
         s1.cmdCLI("config terminal")
-        s1.cmdCLI("hostname  abc")
-        cnt = 15
-        while cnt:
-            output = s1.cmd("uname -n")
-            ovs_out = s1.ovscmd("ovs-vsctl list system")
-            if "hostname=abc" in ovs_out and \
-               "abc" in output:
-                break
-            else:
-                cnt -= 1
-                sleep(1)
-
         s1.cmdCLI("domain-name cli")
         cnt = 15
         while cnt:
             cmd_output = s1.ovscmd("ovs-vsctl list system")
             domainname = s1.ovscmd("ovs-vsctl get system . "
                                    "domain_name").rstrip('\r\n')
-            output = s1.cmd("uname -n")
+            resolve_output = s1.cmd("cat /etc/resolv.conf")
             if "domain_name=cli" in cmd_output and \
                domainname == "cli" and \
-               "cli" in output:
+               "domain cli" in resolve_output:
                 break
             else:
                 cnt -= 1
                 sleep(1)
         assert 'domain_name=cli' in cmd_output and \
                domainname == 'cli' and \
-               'cli' in output,\
+               "domain cli" in resolve_output,\
                "Test to set domainname through CLI"\
                " has failed"
         info("### Successfully verified configuring"
@@ -1876,19 +1864,16 @@ class mgmtIntfTests(OpsVsiTest):
             cmd_output = s1.ovscmd("ovs-vsctl list system")
             domainname = s1.ovscmd("ovs-vsctl get system . "
                                    "domain_name").rstrip('\r\n')
-            output = s1.cmd("uname -n")
-            if "hostname=abc" in cmd_output and \
-               domainname == '' and \
-               "cli" not in output:
+            resolve_output = s1.cmd("cat /etc/resolv.conf")
+            if domainname == '' and \
+               "domain cli" not in resolve_output:
                 break
             else:
                 cnt -= 1
                 sleep(1)
-        assert 'hostname=abc' in cmd_output and \
-               domainname == '' and \
-               "cli" not in output,\
-               "Test to unset domainname through CLI"\
-               " has failed"
+        assert "domain cli" not in resolve_output and \
+               domainname == '',\
+               "Test to unset domainname through CLI has failed"
         info("### Successfully verified reconfiguring"
              " domainame to default value using CLI ###\n")
 
@@ -1925,7 +1910,6 @@ class mgmtIntfTests(OpsVsiTest):
             cmd_output = s1.ovscmd("ovs-vsctl list system")
             domainname = s1.ovscmd("ovs-vsctl get system . "
                                    "domain_name").rstrip('\r\n')
-            output = s1.cmd("uname -n")
             if "dhcp_domain_name" not in cmd_output and \
                domainname == '':
                 break
