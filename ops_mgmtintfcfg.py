@@ -21,7 +21,6 @@ import select
 import struct
 import socket
 from time import sleep
-
 import re
 import ovs.dirs
 import ovs.daemon
@@ -68,6 +67,7 @@ RTMGRP_LINK = 1
 RTMGRP_IPV4_IFADDR = 0x10
 RTMGRP_IPV6_IFADDR = 0x100
 IFA_F_DADFAILED = 0x08
+IFA_F_TENTATIVE = 0x40
 SO_BINDTODEVICE = 11
 RTNL_GROUPS = RTMGRP_LINK | RTMGRP_IPV4_IFADDR | RTMGRP_IPV6_IFADDR
 
@@ -479,6 +479,27 @@ def mgmt_intf_start_dhcp_client(idl):
     dhcp_str = "systemctl start dhclient@" + mgmt_intf + ".service"
     os.system(dhcp_str)
     vlog.info("Started dhcp v4 client on interface " + mgmt_intf)
+    #Before starting dhclient6 we need to check if DAD is complete
+    try:
+        ipr = IPRoute()
+        dev = ipr.link_lookup(ifname=mgmt_intf)[0]
+        cnt = 0
+        while True:
+            dhcp_flags_list = [x['flags']
+                               for x in ipr.get_addr(index=dev,
+                                                     family=AF_INET6)]
+            dhcp_flags = dhcp_flags_list[0]
+            vlog.dbg("flag status %d " % (dhcp_flags))
+            cnt += 1
+            sleep(1)
+            if (dhcp_flags & IFA_F_TENTATIVE) != IFA_F_TENTATIVE or \
+               (cnt > 10):
+                break
+        ipr.close()
+    except NetlinkError as e:
+        vlog.err("Getting flag info failed with code %d" % e.code)
+    except:
+        vlog.err("Unexpected error:" + str(sys.exc_info()[0]))
 
     # Start IPv6 DHCP client.
     dhcp_str = "systemctl start dhclient6@" + mgmt_intf + ".service"
