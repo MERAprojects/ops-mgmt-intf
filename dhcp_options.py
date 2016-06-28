@@ -84,69 +84,74 @@ def mgmt_intf_clear_dns_conf():
 # Function to update dhcp client parameter into ovsdb
 def update_mgmt_intf_status(hostname, dns_1, dns_2, domainname):
     global idl
+    retry_count = 50
+    while retry_count > 0:
+        status_data = {}
+        is_update = False
 
-    status_data = {}
-    is_update = False
+        for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
+            if ovs_rec.mgmt_intf_status:
+                status_data = ovs_rec.mgmt_intf_status
+                break
 
-    for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
-        if ovs_rec.mgmt_intf_status:
-            status_data = ovs_rec.mgmt_intf_status
-            break
-
-    dhcp_hostname = status_data.get(MGMT_INTF_KEY_DHCP_HOSTNAME,
-                                    MGMT_INTF_NULL_VAL)
-    ovsdb_dns1 = status_data.get(MGMT_INTF_KEY_DNS1, DEFAULT_IPV4)
-    ovsdb_dns2 = status_data.get(MGMT_INTF_KEY_DNS2, DEFAULT_IPV4)
-    dhcp_domainname = status_data.get(MGMT_INTF_KEY_DHCP_DOMAIN_NAME,
-                                      MGMT_INTF_NULL_VAL)
+        dhcp_hostname = status_data.get(MGMT_INTF_KEY_DHCP_HOSTNAME,
+                                        MGMT_INTF_NULL_VAL)
+        ovsdb_dns1 = status_data.get(MGMT_INTF_KEY_DNS1, DEFAULT_IPV4)
+        ovsdb_dns2 = status_data.get(MGMT_INTF_KEY_DNS2, DEFAULT_IPV4)
+        dhcp_domainname = status_data.get(MGMT_INTF_KEY_DHCP_DOMAIN_NAME,
+                                          MGMT_INTF_NULL_VAL)
     # Storing hostname as received from host-name option from dhcp server.
     # This may or may not be resolvable by the local domain
     # Eg: www.nx1,www,etc.
-    if dhcp_hostname != hostname:
-        if hostname != MGMT_INTF_NULL_VAL:
-            status_data[MGMT_INTF_KEY_DHCP_HOSTNAME] = hostname
-        else:
-            del status_data[MGMT_INTF_KEY_DHCP_HOSTNAME]
-        is_update = True
+        if dhcp_hostname != hostname:
+            if hostname != MGMT_INTF_NULL_VAL:
+                status_data[MGMT_INTF_KEY_DHCP_HOSTNAME] = hostname
+            else:
+                del status_data[MGMT_INTF_KEY_DHCP_HOSTNAME]
+            is_update = True
     # Storing domainname as received from domain-name option from dhcp server.
     # This would be used to resolv various hosts during dns queries
     # Eg: slave.example.com,internal.example.com,example.com,etc.
-    if domainname != dhcp_domainname:
-        if domainname != MGMT_INTF_NULL_VAL:
-            status_data[MGMT_INTF_KEY_DHCP_DOMAIN_NAME] = domainname
-        else:
-            del status_data[MGMT_INTF_KEY_DHCP_DOMAIN_NAME]
-        is_update = True
-
-    if dns_1 != 'None':
-        if dns_1 != ovsdb_dns1:
-            status_data[MGMT_INTF_KEY_DNS1] = dns_1
+        if domainname != dhcp_domainname:
+            if domainname != MGMT_INTF_NULL_VAL:
+                status_data[MGMT_INTF_KEY_DHCP_DOMAIN_NAME] = domainname
+            else:
+                del status_data[MGMT_INTF_KEY_DHCP_DOMAIN_NAME]
             is_update = True
-    elif ovsdb_dns1 != DEFAULT_IPV4:
-        mgmt_intf_clear_dns_conf()
-        del status_data[MGMT_INTF_KEY_DNS1]
-        is_update = True
 
-    if dns_2 != 'None':
-        if dns_2 != ovsdb_dns2:
-            status_data[MGMT_INTF_KEY_DNS2] = dns_2
+        if dns_1 != 'None':
+            if dns_1 != ovsdb_dns1:
+                status_data[MGMT_INTF_KEY_DNS1] = dns_1
+                is_update = True
+        elif ovsdb_dns1 != DEFAULT_IPV4:
+            mgmt_intf_clear_dns_conf()
+            del status_data[MGMT_INTF_KEY_DNS1]
             is_update = True
-    elif ovsdb_dns2 != DEFAULT_IPV4:
-        del status_data[MGMT_INTF_KEY_DNS2]
-        is_update = True
+
+        if dns_2 != 'None':
+            if dns_2 != ovsdb_dns2:
+                status_data[MGMT_INTF_KEY_DNS2] = dns_2
+                is_update = True
+        elif ovsdb_dns2 != DEFAULT_IPV4:
+            del status_data[MGMT_INTF_KEY_DNS2]
+            is_update = True
 
     # create the transaction
-    if is_update:
-        txn = ovs.db.idl.Transaction(idl)
-        setattr(ovs_rec, "mgmt_intf_status", status_data)
-        status = txn.commit_block()
-
-        if status != "success" and status != "unchanged":
-            vlog.err("Updating DHCP hostname status column failed \
+        if is_update:
+            txn = ovs.db.idl.Transaction(idl)
+            ovs_rec.verify("mgmt_intf_status")
+            setattr(ovs_rec, "mgmt_intf_status", status_data)
+            status = txn.commit_block()
+            if status == "try again":
+                vlog.info("ovsdb not in syn.Hence retrying the transaction")
+                retry_count = retry_count - 1
+                continue
+            if status != "success" and status != "unchanged":
+                vlog.err("Updating DHCP hostname status column failed \
                         with status %s" % (status))
-            return False
+                return False
 
-    return True
+        return True
 
 
     ###############################  main  ###########################

@@ -876,6 +876,7 @@ def mgmt_intf_cfg_update(idl):
     status_col_updt_reqd = False
     hostname = MGMT_INTF_DEFAULT_HOSTNAME
     domainname = MGMT_INTF_DEFAULT_DOMAIN_NAME
+    new_mode = mode_val
     # Retrieve the data from status table
     for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
         if ovs_rec.hostname:
@@ -885,6 +886,11 @@ def mgmt_intf_cfg_update(idl):
         if ovs_rec.domain_name:
             if ovs_rec.domain_name[0] != MGMT_INTF_DEFAULT_DOMAIN_NAME:
                 domainname = ovs_rec.domain_name[0]
+        if ovs_rec.mgmt_intf:
+            new_mode = ovs_rec.mgmt_intf.get(MGMT_INTF_KEY_MODE,
+                                             MGMT_INTF_NULL_VAL)
+            if (new_mode == MGMT_INTF_NULL_VAL):
+                new_mode = mode_val
 
     status_hostname = status_data.get(MGMT_INTF_KEY_HOSTNAME,
                                       MGMT_INTF_NULL_VAL)
@@ -894,6 +900,16 @@ def mgmt_intf_cfg_update(idl):
                                         MGMT_INTF_NULL_VAL)
     dhcp_domainname = status_data.get(MGMT_INTF_KEY_DHCP_DOMAIN_NAME,
                                       MGMT_INTF_NULL_VAL)
+    if new_mode == MGMT_INTF_MODE_STATIC:
+        if dhcp_domainname != MGMT_INTF_NULL_VAL:
+            del status_data[MGMT_INTF_KEY_DHCP_DOMAIN_NAME]
+            dhcp_domainname = MGMT_INTF_NULL_VAL
+            status_col_updt_reqd = True
+        if dhcp_hostname != MGMT_INTF_NULL_VAL:
+            del status_data[MGMT_INTF_KEY_DHCP_HOSTNAME]
+            dhcp_hostname = MGMT_INTF_NULL_VAL
+            status_col_updt_reqd = True
+
     if (hostname == MGMT_INTF_DEFAULT_HOSTNAME) and \
        (dhcp_hostname != MGMT_INTF_NULL_VAL):
         hostname = dhcp_hostname
@@ -915,6 +931,8 @@ def mgmt_intf_cfg_update(idl):
 
     if status_col_updt_reqd:
         os.system("hostname " + hostname)
+
+    # domain name should be added if configured manually
     # Add domainname entry in resolv.conf
     dns_1 = status_data.get(MGMT_INTF_KEY_DNS1, DEFAULT_IPV4)
     dns_2 = status_data.get(MGMT_INTF_KEY_DNS2, DEFAULT_IPV4)
@@ -1340,27 +1358,6 @@ def mgmt_intf_update_dhcp_param(idl):
         if ovs_rec.mgmt_intf_status:
             status_data = ovs_rec.mgmt_intf_status
 
-    ipv6_link_local, link_state, hostname, dhcp_hostname,\
-        domainname, dhcp_domainname = \
-        mgmt_intf_get_status(idl)
-    if ipv6_link_local != DEFAULT_IPV6:
-        data[MGMT_INTF_KEY_IPV6_LINK_LOCAL] = ipv6_link_local
-
-    if link_state != MGMT_INTF_NULL_VAL:
-        data[MGMT_INTF_KEY_LINK_STATE] = link_state
-
-    if hostname != MGMT_INTF_NULL_VAL:
-        data[MGMT_INTF_KEY_HOSTNAME] = hostname
-
-    if dhcp_hostname != MGMT_INTF_NULL_VAL:
-        data[MGMT_INTF_KEY_DHCP_HOSTNAME] = dhcp_hostname
-
-    if domainname != MGMT_INTF_NULL_VAL:
-        data[MGMT_INTF_KEY_DOMAIN_NAME] = domainname
-
-    if dhcp_domainname != MGMT_INTF_NULL_VAL:
-        data[MGMT_INTF_KEY_DHCP_DOMAIN_NAME] = dhcp_domainname
-
     try:
         ipr = IPRoute()
         if ipr.get_addr(label=mgmt_intf, family=AF_INET):
@@ -1388,8 +1385,6 @@ def mgmt_intf_update_dhcp_param(idl):
                     return True
 
                 dhcp_prefix = dhcp_prefix_list[0]
-                data[MGMT_INTF_KEY_IP] = dhcp_ip
-                data[MGMT_INTF_KEY_SUBNET] = str(dhcp_prefix)
                 is_updt = True
         else:
             ipr = IPRoute()
@@ -1420,7 +1415,6 @@ def mgmt_intf_update_dhcp_param(idl):
             # from the dhcp populated value.
             ovsdb_gw = status_data.get(MGMT_INTF_KEY_DEF_GW, DEFAULT_IPV4)
             if (dhcp_gw != ovsdb_gw) and (dhcp_gw != DEFAULT_IPV4):
-                data[MGMT_INTF_KEY_DEF_GW] = dhcp_gw
                 is_updt = True
 
         ipr.close()
@@ -1432,18 +1426,35 @@ def mgmt_intf_update_dhcp_param(idl):
         vlog.err("Unexpected error:" + str(sys.exc_info()[0]))
         return False
     if is_updt:
-        txn = ovs.db.idl.Transaction(idl)
+        retry_count = 50
+        while retry_count > 0:
+            txn = ovs.db.idl.Transaction(idl)
+            for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
+                if ovs_rec.mgmt_intf_status:
+                    data = ovs_rec.mgmt_intf_status
+                    break
+            ovs_rec.verify("mgmt_intf_status")
+            if (dhcp_ip != ovsdb_ip) and (dhcp_ip != DEFAULT_IPV4):
+                data[MGMT_INTF_KEY_IP] = dhcp_ip
+                data[MGMT_INTF_KEY_SUBNET] = str(dhcp_prefix)
+            if (dhcp_gw != ovsdb_gw) and (dhcp_gw != DEFAULT_IPV4):
+                data[MGMT_INTF_KEY_DEF_GW] = dhcp_gw
+            for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
+                if ovs_rec.mgmt_intf:
+                    break
 
-        for ovs_rec in idl.tables[SYSTEM_TABLE].rows.itervalues():
-            if ovs_rec.mgmt_intf:
+            setattr(ovs_rec, "mgmt_intf_status", data)
+            status = txn.commit_block()
+            if status == "try again":
+                vlog.info("ovsdb not in syn.Hence retrying the transaction")
+                retry_count = retry_count - 1
+                continue
+            if status != "success" and status != "unchanged":
+                vlog.err("Updating ovsdb for dhcp param failed with status %s"
+                         % (status))
+                return False
+            else:
                 break
-
-        setattr(ovs_rec, "mgmt_intf_status", data)
-        status = txn.commit_block()
-        if status != "success" and status != "unchanged":
-            vlog.err("Updating ovsdb for dhcp parameter failed with status %s"
-                     % (status))
-            return False
     return True
 
 
@@ -1998,6 +2009,7 @@ def main():
 
     while not exiting:
         mgmt_intf_run(idl, seqno)
+        seqno = idl.change_seqno
 
         unixctl_server.run()
 
@@ -2032,10 +2044,8 @@ def main():
                     vlog.err("Management Interface netlink socket error HUP")
                     nl_socket.close()
                     sys.exit()
-
         if exiting:
             break
-        seqno = idl.change_seqno
 
     # Daemon Exit.
     unixctl_server.close()
