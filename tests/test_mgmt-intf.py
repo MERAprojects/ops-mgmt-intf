@@ -1776,6 +1776,11 @@ class mgmtIntfTests(OpsVsiTest):
     # Verify to set hostname through dhclient
     def set_hostname_by_dhclient(self):
         s1 = self.net.switches[0]
+        s1.cmdCLI("configure terminal")
+        s1.cmdCLI("interface mgmt")
+        s1.cmdCLI("ip dhcp")
+        #giving time for dhcp client to come up
+        sleep(2)
         s1.cmd("dhcp_options dhcp-new None None None")
         cnt = 15
         while cnt:
