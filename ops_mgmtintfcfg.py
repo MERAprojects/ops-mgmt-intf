@@ -1351,6 +1351,10 @@ def mgmt_intf_update_dhcp_param(idl):
     # Initialize the values to be used.
     data = {}
     is_updt = False
+    dhcp_ip = DEFAULT_IPV4
+    ovsdb_ip = DEFAULT_IPV4
+    dhcp_gw = DEFAULT_IPV4
+    ovsdb_gw = DEFAULT_IPV4
 
     status_data = {}
     # Get the current values from status column
