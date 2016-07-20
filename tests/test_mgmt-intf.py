@@ -1935,7 +1935,7 @@ class mgmtIntfTests(OpsVsiTest):
         if 'inet' in output:
             s1.cmd("ip netns exec swns ip address flush dev 1")
 
-
+@pytest.mark.skipif(True, reason="Disabling old tests")
 class Test_mgmt_intf:
 
     def setup_class(cls):
