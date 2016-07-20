@@ -18,6 +18,7 @@ from time import sleep
 import re
 from pytest import raises
 from topology_lib_vtysh.exceptions import UnknownVtyshException
+from pytest import mark
 
 TOPOLOGY = """
 #               +-------+
@@ -554,7 +555,7 @@ def mgmt_intf_cleanup(sw1):
     if 'inet' in output:
         sw1("ip netns exec swns ip address flush dev 1", shell="bash")
 
-
+@mark.gate
 def test_mgmt_intf(topology, step):
 
     setup_net()
