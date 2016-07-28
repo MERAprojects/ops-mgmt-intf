@@ -16,6 +16,7 @@
 import os
 from time import sleep
 import re
+from pytest import mark
 
 TOPOLOGY = """
 #               +-------+
@@ -97,8 +98,9 @@ def setup_net():
 # Static IP configuration check
 def static_ip_config_check(sw1, conf_ip):
     cnt = 15
+    sw1("end")
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         if conf_ip in output:
             cnt2 = 15
@@ -121,8 +123,9 @@ def static_ip_config_check(sw1, conf_ip):
 def static_ip_unconfigure_check(sw1, conf_ip):
     eth0 = sw1.ports["sp1"]
     cnt = 15
+    sw1("end")
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         if conf_ip not in output:
             cnt2 = 15
@@ -144,11 +147,12 @@ def static_ip_unconfigure_check(sw1, conf_ip):
 
 # Default IPv4 configuration check
 def default_ipv4_configure_check(sw1, def_ip):
+    sw1("end")
     output = sw1(" ")
     output_show = ''
     cnt = 15
     while cnt:
-        output_show = sw1("do show interface mgmt")
+        output_show = sw1("show interface mgmt")
         output += sw1(" ")
         temp = re.findall("Default gateway IPv4\s+: " + def_ip, output_show)
         if temp:
@@ -173,9 +177,11 @@ def default_ipv4_configure_check(sw1, def_ip):
 def dhclient_started_on_mgmt_intf_ipv4(sw1):
     cnt = 15
     while cnt:
-        output = sw1("systemctl status dhclient@eth0.service -l", shell="bash")
-        if output in 'running':
-            break
+        output = sw1("systemctl status dhclient@eth0.service", shell="bash")
+        output_temp = re.search(r'running', output, re.M | re.I)
+        if output_temp is not None:
+            if output_temp.group() == 'running':
+                break
         else:
             cnt -= 1
             sleep(1)
@@ -218,11 +224,16 @@ def dhcp_mode_set_on_mgmt_intf(sw1):
                                    tmp[0])[0].split("/")
     assert 'dhcp' in output
     output = sw1("systemctl status dhclient@eth0.service", shell="bash")
-    assert 'running' in output
+    output_temp = re.search(r'running', output, re.M | re.I)
+    if output_temp is None:
+        assert 'running' in output
 
 
 # Add Default gateway in DHCP mode.
 def config_default_gateway_ipv4_dhcp_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("default-gateway 172.17.0.1")
     assert 'Configurations not allowed in dhcp mode' in output
     output = sw1(" ")
@@ -233,21 +244,28 @@ def config_default_gateway_ipv4_dhcp_mode(sw1):
 
 # Add DNS Server 1 in DHCP mode.
 def config_primary_ipv4_dns_dhcp_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("nameserver 10.10.10.1")
     assert 'Configurations not allowed in dhcp mode' in output
     output = sw1(" ")
     output = sw1("echo", shell="bash")
-    output = sw1("do show interface mgmt")
+    output = sw1("show interface mgmt")
     assert '10.10.10.1' not in output
 
 
 # Add DNS Server 2 in DHCP mode.
 def config_secondary_ipv4_dns_dhcp_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("nameserver 10.10.10.1 10.10.10.2")
     assert 'Configurations not allowed in dhcp mode' in output
     output = sw1(" ")
     output = sw1("echo", shell="bash")
-    output = sw1("do show interface mgmt")
+    sw1("end")
+    output = sw1("show interface mgmt")
     output += sw1("echo", shell="bash")
     assert '10.10.10.2' not in output
 
@@ -255,10 +273,10 @@ def config_secondary_ipv4_dns_dhcp_mode(sw1):
 # Add DNS Server 2 through dhclient in DHCP mode.
 def invalid_test_config_secondary_ipv4_dns_by_dhclient_dhcp_mode(sw1):
     sw1("dhcp_options None 10.10.10.2 10.10.10.4 None", shell="bash")
-    output = sw1(" ")
+    output = sw1("end")
     cnt = 15
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         temp = re.findall("Primary Nameserver\s+: 10.10.10.2", output)
         temp2 = re.findall("Secondary Nameserver\s+: 10.10.10.4", output)
@@ -274,10 +292,10 @@ def invalid_test_config_secondary_ipv4_dns_by_dhclient_dhcp_mode(sw1):
 # Add DNS Server 1 through dhclient in DHCP mode.
 def config_primary_ipv4_dns_by_dhclient_dhcp_mode(sw1):
     sw1("dhcp_options None 10.10.10.5 None None", shell="bash")
-    output = sw1(" ")
+    output = sw1("end")
     cnt = 15
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         temp = re.findall("Primary Nameserver\s+: 10.10.10.5", output)
         if temp:
@@ -291,10 +309,10 @@ def config_primary_ipv4_dns_by_dhclient_dhcp_mode(sw1):
 # Modify DNS Server 1 & 2 through dhclient in DHCP mode.
 def reconfig_primary_secondary_ipv4_dns_by_dhclient_dhcp_mode(sw1):
     sw1("dhcp_options None 10.10.10.2 10.10.10.4 None", shell="bash")
-    output = sw1(" ")
+    output = sw1("end")
     cnt = 15
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         temp = re.findall("Primary Nameserver\s+: 10.10.10.2", output)
         temp2 = re.findall("Secondary Nameserver\s+: 10.10.10.4", output)
@@ -310,10 +328,10 @@ def reconfig_primary_secondary_ipv4_dns_by_dhclient_dhcp_mode(sw1):
 # Remove primary and secondary DNS through dhclient in DHCP mode.
 def remove_primary_secondary_ipv4_dns_by_dhclient_dhcp_mode(sw1):
     sw1("dhcp_options None None None None", shell="bash")
-    output = sw1(" ")
+    output = sw1("end")
     cnt = 15
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         temp = re.findall("Primary Nameserver\s+: 10.10.10.2", output)
         temp2 = re.findall("Secondary Nameserver\s+: 10.10.10.4", output)
@@ -329,10 +347,10 @@ def remove_primary_secondary_ipv4_dns_by_dhclient_dhcp_mode(sw1):
 # Add DNS Server 2 through dhclient in DHCP mode.
 def config_secondary_ipv4_dns_by_dhclient_dhcp_mode(sw1):
     sw1("dhcp_options None 10.10.10.2 10.10.10.4 None", shell="bash")
-    output = sw1(" ")
+    output = sw1("end")
     cnt = 15
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         temp = re.findall("Primary Nameserver\s+: 10.10.10.2", output)
         temp2 = re.findall("Secondary Nameserver\s+: 10.10.10.4", output)
@@ -349,6 +367,9 @@ def config_secondary_ipv4_dns_by_dhclient_dhcp_mode(sw1):
 def config_ipv4_on_mgmt_intf_static_mode(sw1):
     ipv4_static = re.sub('\d+$', '128', dhcp_ipv4_submask[0])
     conf_ipv4 = ipv4_static+"/" + dhcp_ipv4_submask[1]
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     sw1("ip static " + conf_ipv4)
     static_ip_config_check(sw1, conf_ipv4)
 
@@ -357,6 +378,9 @@ def config_ipv4_on_mgmt_intf_static_mode(sw1):
 def reconfig_ipv4_on_mgmt_intf_static_mode(sw1):
     ipv4_static = re.sub('\d+$', '129', dhcp_ipv4_submask[0])
     conf_ipv4 = ipv4_static+"/" + dhcp_ipv4_submask[1]
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     sw1("ip static " + conf_ipv4)
     static_ip_config_check(sw1, conf_ipv4)
 
@@ -364,6 +388,9 @@ def reconfig_ipv4_on_mgmt_intf_static_mode(sw1):
 # Add Default gateway in Static mode.
 def config_ipv4_default_gateway_static_mode(sw1):
     ipv4_default = re.sub('\d+$', '130', dhcp_ipv4_submask[0])
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     sw1("default-gateway " + ipv4_default)
     default_ipv4_configure_check(sw1, ipv4_default)
 
@@ -371,6 +398,9 @@ def config_ipv4_default_gateway_static_mode(sw1):
 # Remove Default gateway in static mode.
 def unconfig_ipv4_default_gateway_static_mode(sw1):
     ipv4_default = re.sub('\d+$', '130', dhcp_ipv4_submask[0])
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     sw1("no default-gateway " + ipv4_default)
     cnt = 15
     while cnt:
@@ -398,17 +428,24 @@ def unconfig_ipv4_default_gateway_static_mode(sw1):
 
 # Add IPv6 Default gateway in static mode when IPV4 configured.
 def config_ipv6_default_gateway_ipv4_is_set_static_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("default-gateway 2001:db8:0:1::128")
     assert 'IP should be configured first' in output
 
 
 # Add DNS Server 1 in static mode.
 def config_primary_ipv4_dns_static_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     sw1("nameserver 10.10.10.5")
     output = sw1(" ")
     cnt = 15
+    sw1("end")
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         temp = re.findall("Primary Nameserver\s+: 10.10.10.5", output)
         if temp:
@@ -430,11 +467,14 @@ def config_primary_ipv4_dns_static_mode(sw1):
 
 # Add another primary DNS server.
 def reconfig_primary_ipv4_dns_static_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     sw1("nameserver 10.10.10.20")
-    output = sw1(" ")
     cnt = 15
+    sw1("end")
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         temp = re.findall("Primary Nameserver\s+: 10.10.10.20", output)
         if temp:
@@ -459,10 +499,14 @@ def reconfig_primary_ipv4_dns_static_mode(sw1):
 # Remove primary dns in static mode.
 def remove_primary_ipv4_dns_static_mode(sw1):
     sleep(15)
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     sw1("no nameserver 10.10.10.20")
     cnt = 15
+    sw1("end")
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         if 'Primary Nameserver\s+: 10.10.10.20' not in output:
             cnt2 = 15
@@ -484,11 +528,15 @@ def remove_primary_ipv4_dns_static_mode(sw1):
 # Configure Secondary DNS Server in static mode.
 def config_secondary_ipv4_dns_static_mode(sw1):
     sleep(15)
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     sw1("nameserver 10.10.10.4 10.10.10.5")
     sleep(2)
     cnt = 15
+    sw1("end")
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         if re.findall("Primary Nameserver\s+: 10.10.10.4", output) and \
            re.findall("Secondary Nameserver\s+: 10.10.10.5", output):
@@ -512,11 +560,15 @@ def config_secondary_ipv4_dns_static_mode(sw1):
 
 # Reconfigure Secondary DNS Server in static mode.
 def reconfig_secondary_ipv4_dns_static_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     sw1("nameserver 10.10.10.4 10.10.10.20")
     output = sw1(" ")
     cnt = 15
+    sw1("end")
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         if re.findall("Primary Nameserver\s+: 10.10.10.4", output) and \
            re.findall("Secondary Nameserver\s+: 10.10.10.20", output):
@@ -542,10 +594,14 @@ def reconfig_secondary_ipv4_dns_static_mode(sw1):
 
 # Remove Secondary DNS ipv4 in static mode.
 def unconfig_secondary_ipv4_dns_static_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     sw1("no nameserver  10.10.10.4 10.10.10.20")
     cnt = 15
+    sw1("end")
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         if re.findall("Primary Nameserver\s+: 10.10.10.4", output) and \
            re.findall("Secondary Nameserver\s+: 10.10.10.20", output):
@@ -567,89 +623,132 @@ def unconfig_secondary_ipv4_dns_static_mode(sw1):
 
 # Set Invalid IP on mgmt-intf.
 def config_invalid_ipv4_on_mgmt_intf(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("ip static 0.0.0.0/24")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Set Multicast IP on mgmt-intf.
 def config_multicast_ipv4_on_mgmt_intf(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("ip static 224.0.0.1/16")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Set broadcast IP on mgmt-intf.
 def config_broadcast_ipv4_on_mgmt_intf(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("ip static 192.168.0.255/24")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Set loopback IP on mgmt-intf.
 def config_loopback_ipv4_on_mgmt_intf(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("ip static 127.0.0.1/24")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Add Default Invalid gateway IP in static mode
 def config_invalid_default_gateway_ipv4_static_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("default-gateway 0.0.0.0")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Add multicast ip as default gateway in static mode.
 def config_multicast_ipv4_default_gateway_static_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("default-gateway 224.0.0.1")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Add broadcast ip as default gateway ip in static mode.
 def config_broadcast_ipv4_default_gateway_static_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("default-gateway 192.168.0.255")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Add loopback address as default gateway ip in static mode
 def config_loopback_ipv4_default_gateway_static_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("default-gateway 127.0.0.1")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Configure an invalid IP address as primary DNS.
 def config_invalid_primary_ipv4_dns_static_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("nameserver 0.0.0.0")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Configure a multicast address as primary DNS.
 def config_multicast_ipv4_primary_dns_static_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("nameserver 224.0.0.1")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Configure a broadcast address as primary DNS.
 def config_broadcast_ipv4_primary_dns_static_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("nameserver 192.168.0.255")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Configure a loopback address as primary DNS.
 def config_loopback_primary_ipv4_dns_static_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("nameserver 127.0.0.1")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Configure an invalid IP as secondary DNS.
 def config_invalid_ipv4_secondary_dns_static_mode(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     output = sw1("nameserver 10.10.10.1 0.0.0.0")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Change mode from static to dhcp.
 def change_mode_from_static_to_dhcp_ipv4(sw1):
+    sw1("end")
+    sw1("config t")
+    sw1("interface mgmt")
     sw1("ip dhcp")
     output = sw1(" ")
     cnt = 15
+    sw1("end")
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         output += sw1("echo", shell="bash")
         if 'dhcp' in output:
@@ -673,8 +772,9 @@ def ipv4_got_after_populated_ipv4_config(sw1):
     temp = re.findall("inet\s+\d+.\d+.\d+.\d+/\d+", out)
     host_ip_address = re.findall("\d+.\d+.\d+.\d+/\d+", temp[0])
     cnt = 15
+    sw1("end")
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         output += sw1("echo", shell="bash")
         if host_ip_address[0] in output:
@@ -688,8 +788,9 @@ def ipv4_got_after_populated_ipv4_config(sw1):
 # Test if Default gateway got from DHCP is set.
 def ipv4_default_gateway_got_after_populated_ipv4_config(sw1):
     cnt = 15
+    sw1("end")
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         output += sw1("echo", shell="bash")
         if '172.17.0.1' in output:
@@ -722,19 +823,27 @@ def config_default_gateway_ipv6_dhcp_mode(sw1):
 
 # Add IPV6 DNS Server 1 in DHCP mode.
 def config_primary_ipv6_dns_dhcp_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("nameserver 2001:db8:0:1::128")
     output = sw1(" ")
     output = sw1("echo", shell="bash")
-    output = sw1("do show interface mgmt")
+    sw1("end")
+    output = sw1("show interface mgmt")
     assert '2001:db8:0:1::128' not in output
 
 
 # Add IPV6 DNS Server 2 in DHCP mode.
 def config_secondary_ipv6_dns_dhcp_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("nameserver 2001:db8:0:1::106 2001:db8:0:1::128")
     output = sw1(" ")
     output = sw1("echo", shell="bash")
-    output = sw1("do show interface mgmt")
+    sw1("end")
+    output = sw1("show interface mgmt")
     output += sw1("echo", shell="bash")
     assert '2001:db8:0:1::128' not in output
 
@@ -744,9 +853,10 @@ def config_secondary_ipv6_dns_by_dhclient_dhcp_mode(sw1):
     sw1("dhcp_options None 2001:470:35:270::1  2001:470:35:270::2 None",
         shell="bash")
     output = sw1(" ")
+    sw1("end")
     cnt = 15
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         temp = re.findall("Primary Nameserver\s+: 2001:470:35:270::1",
                           output)
@@ -765,9 +875,10 @@ def config_secondary_ipv6_dns_by_dhclient_dhcp_mode(sw1):
 def config_primary_ipv6_dns_by_dhclient_dhcp_mode(sw1):
     sw1("dhcp_options None 2001:470:35:270::1 None None", shell="bash")
     output = sw1(" ")
+    sw1("end")
     cnt = 15
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         temp = re.findall("Primary Nameserver\s+: 2001:470:35:270::1",
                           output)
@@ -784,9 +895,10 @@ def reconfig_ipv6_dns_by_dhclient_dhcp_mode(sw1):
     sw1("dhcp_options None 2001:470:35:270::5  2001:470:35:270::6 None",
         shell="bash")
     output = sw1(" ")
+    sw1("end")
     cnt = 15
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         temp = re.findall("Primary Nameserver\s+: 2001:470:35:270::5",
                           output)
@@ -806,8 +918,9 @@ def remove_primary_secondary_ipv6_dns_by_dhclient_dhcp_mode(sw1):
     sw1("dhcp_options None None None None", shell="bash")
     output = sw1(" ")
     cnt = 15
+    sw1("end")
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         temp = re.findall("Primary Nameserver\s+: 2001:470:35:270::5",
                           output)
@@ -824,36 +937,54 @@ def remove_primary_secondary_ipv6_dns_by_dhclient_dhcp_mode(sw1):
 
 # Static IPV6 config when mode is static.
 def config_ipv6_on_mgmt_intf_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("ip static 2001:db8:0:1::156/64")
     static_ip_config_check(sw1, "2001:db8:0:1::156/64")
 
 
 # Set the IPV6 again.
 def reconfig_ipv6_on_mgmt_intf_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("ip static 2001:db8:0:1::157/64")
     static_ip_config_check(sw1, "2001:db8:0:1::157/64")
 
 
 # Set Invalid IPV6 on mgmt-intf.
 def config_invalid_ipv6_on_mgmt_intf(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("ip static ::")
     assert 'Unknown command' in output
 
 
 # Test to verify Multicast IPV6 on mgmt-intf.
 def config_multicast_ipv6_on_mgmt_intf(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("ip static ff01:db8:0:1::101/64")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Test to verify link-local IPV6 on mgmt-intf.
 def config_link_local_ipv6_on_mgmt_intf(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("ip static fe80::5484:7aff:fefe:9799/64")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Test to verify loopback IPV6 on mgmt-intf
 def config_loopback_ipv6_on_mgmt_intf(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("ip static ::1")
     assert 'Unknown command' in output
 
@@ -861,111 +992,163 @@ def config_loopback_ipv6_on_mgmt_intf(sw1):
 # Default gateway should be reachable. Otherwise test case will fail.
 # Add Default gateway in Static mode.
 def config_ipv6_default_gateway_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("default-gateway 2001:db8:0:1::128")
-    output = sw1(" ")
-    output = sw1("do show running-config")
+    output = sw1("end")
+    output = sw1("show running-config")
     assert 'default-gateway 2001:db8:0:1::128' in output
 
 
 # Add IPV4 Default gateway in static mode when IPV6 configured.
 def config_ipv4_default_gateway_ipv6_is_set_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("default-gateway 192.168.1.2")
     assert 'IP should be configured first' in output
 
 
 # Add Default Invalid gateway IPV6 in static mode.
 def config_invalid_default_gateway_ipv6_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("default-gateway ::")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Add Deafult  multicast gateway ipv6 in static mode.
 def config_multicast_ipv6_default_gateway_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("default-gateway ff01:db8:0:1::101")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Add Default link-local  gateway ipv6 in static mode.
 def config_default_link_local_ipv6_gateway_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("default-gateway fe80::5484:7aff:fefe:9799")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Add Default loopback gateway ipv6 in static mode.
 def config_loopback_ipv6_default_gateway_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("default-gateway ::1")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Remove Default gateway in static mode.
 def unconfig_ipv6_default_gateway_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("no default-gateway 2001:db8:0:1::128")
-    output = sw1(" ")
-    output = sw1("do show running-config")
+    output = sw1("end")
+    output = sw1("show running-config")
     assert 'default-gateway 2001:db8:0:1::128' not in output
 
 
 # Configure an invalid IPV6 for primary DNS.
 def config_invalid_primary_ipv6_dns_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("nameserver ::")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Configure an multicast for primary DNS.
 def config_multicast_ipv6_primary_dns_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("nameserver ff01:db8:0:1::101")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Configure a link-local for primary DNS.
 def config_link_local_ipv6_primary_dns_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("nameserver fe80::5484:7aff:fefe:9799")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Configure a loopback for primary DNS.
 def config_loopback_primary_ipv6_dns_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("nameserver ::1")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Configure an invalid IP for secondary DNS.
 def config_invalid_ipv6_secondary_dns_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("nameserver 2001:db8:0:1::144 ::")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Configure an multicast for secondary DNS.
 def config_multicast_ipv6_secondary_dns_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("nameserver 2001:db8:0:1::144 ff01:db8:0:1::101")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Configure a link-local for secondary DNS.
 def config_link_local_ipv6_secondary_dns_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("nameserver 2001:db8:0:1::144 fe80::5484:7aff:fefe:9799")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Configure a loopback for secondary DNS.
 def config_loopback_ipv6_secondary_dns_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("nameserver 2001:db8:0:1::144 ::1")
     assert 'Invalid IPv4 or IPv6 address' in output
 
 
 # Configure primary and secondary DNS as same.
 def config_same_ipv6_primary_secondary_dns_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("nameserver 2001:db8:0:1::144 2001:db8:0:1::144")
     assert 'Duplicate value entered' in output
 
 
 # Add DNS Server 1 in static mode.
 def config_primary_ipv6_dns_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("nameserver 2001:db8:0:1::144")
     output = sw1(" ")
     cnt = 15
+    sw1("end")
     while cnt:
-        output_show = sw1("do show interface mgmt")
+        output_show = sw1("show interface mgmt")
         output_show += sw1(" ")
         if re.findall("Primary Nameserver\s+: 2001:db8:0:1::144",
                       output_show):
@@ -987,11 +1170,15 @@ def config_primary_ipv6_dns_static_mode(sw1):
 
 # Add another DNS server 1.
 def reconfig_primary_ipv6_dns_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("nameserver 2001:db8:0:1::154")
     output = sw1(" ")
     cnt = 15
+    sw1("end")
     while cnt:
-        output_show = sw1("do show interface mgmt")
+        output_show = sw1("show interface mgmt")
         output_show += sw1(" ")
         if re.findall("Primary Nameserver\s+: 2001:db8:0:1::154",
                       output_show):
@@ -1015,10 +1202,14 @@ def reconfig_primary_ipv6_dns_static_mode(sw1):
 
 # Remove DNS server 1.
 def remove_primary_ipv6_dns_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("no nameserver 2001:db8:0:1::154")
     cnt = 15
+    sw1("end")
     while cnt:
-        output_show = sw1("do show interface mgmt")
+        output_show = sw1("show interface mgmt")
         output_show += sw1(" ")
         if re.findall('Primary Nameserver\s+: 2001:db8:0:1::154',
                       output_show):
@@ -1040,10 +1231,14 @@ def remove_primary_ipv6_dns_static_mode(sw1):
 
 # Add DNS Server 2 in static mode.
 def config_secondary_ipv6_dns_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("nameserver 2001:db8:0:1::150 2001:db8:0:1::156")
     cnt = 15
+    sw1("end")
     while cnt:
-        output_show = sw1("do show interface mgmt")
+        output_show = sw1("show interface mgmt")
         output_show += sw1(" ")
         if re.findall("Primary Nameserver\s+: 2001:db8:0:1::150",
            output_show) and re.findall("Secondary Nameserver\s+: 2001:"
@@ -1068,10 +1263,14 @@ def config_secondary_ipv6_dns_static_mode(sw1):
 
 # Add another DNS server 2.
 def reconfig_secondary_ipv6_dns_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("nameserver 2001:db8:0:1::150 2001:db8:0:1::154")
     cnt = 15
+    sw1("end")
     while cnt:
-        output_show = sw1("do show interface mgmt")
+        output_show = sw1("show interface mgmt")
         output = sw1(" ")
         if re.findall("Primary Nameserver\s+: 2001:db8:0:1::150",
                       output_show) and \
@@ -1099,10 +1298,14 @@ def reconfig_secondary_ipv6_dns_static_mode(sw1):
 
 # Remove DNS server 2.
 def unconfig_secondary_ipv6_dns_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("no nameserver  2001:db8:0:1::150 2001:db8:0:1::154")
     cnt = 15
+    sw1("end")
     while cnt:
-        output_show = sw1("do show interface mgmt")
+        output_show = sw1("show interface mgmt")
         output_show += sw1(" ")
         if re.findall("Primary Nameserver\s+: 2001:db8:0:1::150",
                       output_show) and \
@@ -1126,6 +1329,9 @@ def unconfig_secondary_ipv6_dns_static_mode(sw1):
 
 # Change mode from static to dhcp.
 def change_mode_from_static_to_dhcp_ipv6(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("ip dhcp")
     output = sw1(" ")
     sleep(15)
@@ -1152,8 +1358,9 @@ def ipv6_got_after_populated_ipv6_config(sw1):
     output = sw1("cat /etc/resolv.conf", shell="bash")
 
     cnt = 15
+    sw1("end")
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1(" ")
         if re.findall("IPv6 address/prefix\s+: 2001:db8:0:1::150/64",
                       output):
@@ -1166,9 +1373,10 @@ def ipv6_got_after_populated_ipv6_config(sw1):
 
 # Test if Default gateway got from DHCP is set.
 def ipv6_default_gateway_got_after_populated_ipv6_config(sw1):
+    sw1("end")
     cnt = 15
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1(" ")
         if "Default gateway IPv6\t\t: 2001:db8:0:1::128" not in output:
             sleep(1)
@@ -1181,30 +1389,46 @@ def ipv6_default_gateway_got_after_populated_ipv6_config(sw1):
 # Tests to verify 'no ip static .. ' to remove static Ips
 # Verify to remove static IPv4 . Mode should be changed to 'dhcp'
 def remove_ipv4_on_mgmt_intf_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     ipv4_static = re.sub('\d+$', '128', dhcp_ipv4_submask[0])
     sw1("ip dhcp")
-    sw1(" ")
     sleep(15)
     conf_ipv4 = ipv4_static+"/" + dhcp_ipv4_submask[1]
     sw1("ip static " + conf_ipv4)
     static_ip_config_check(sw1, conf_ipv4)
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("no ip static " + conf_ipv4)
     static_ip_unconfigure_check(sw1, conf_ipv4)
-    show_output = sw1("do show interface mgmt")
+    sw1("end")
+    show_output = sw1("show interface mgmt")
     assert 'dhcp' in show_output
 
 
 # Verify to remove static IPv4 with static Ipv6. Mode should not changed
 def remove_ipv4_on_mgmt_intf_with_ipv6(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("ip static 2001:db8:0:1::156/64")
     static_ip_config_check(sw1, "2001:db8:0:1::156/64")
     ipv4_static = re.sub('\d+$', '128', dhcp_ipv4_submask[0])
     conf_ipv4 = ipv4_static+"/" + dhcp_ipv4_submask[1]
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("ip static " + conf_ipv4)
     static_ip_config_check(sw1, conf_ipv4)
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("no ip static " + conf_ipv4)
     static_ip_unconfigure_check(sw1, conf_ipv4)
-    show_output = sw1("do show interface mgmt")
+    sw1("end")
+    show_output = sw1("show interface mgmt")
     assert 'static' in show_output
 
 
@@ -1213,10 +1437,19 @@ def remove_ipv4_on_mgmt_intf_with_def_gw(sw1):
     ipv4_static = re.sub('\d+$', '128', dhcp_ipv4_submask[0])
     ipv4_default = re.sub('\d+$', '130', dhcp_ipv4_submask[0])
     conf_ipv4 = ipv4_static + "/" + dhcp_ipv4_submask[1]
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("ip static " + conf_ipv4)
     static_ip_config_check(sw1, conf_ipv4)
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("default-gateway " + ipv4_default)
     default_ipv4_configure_check(sw1, ipv4_default)
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     cmd_output = sw1("no ip static " + conf_ipv4)
     assert "Remove all IPv4 related info (Default gateway/DNS address)"
     " before removing the IP address from this interface" in cmd_output
@@ -1226,13 +1459,20 @@ def remove_ipv4_on_mgmt_intf_with_def_gw(sw1):
 def remove_ipv4_on_mgmt_intf_with_nameserver(sw1):
     ipv4_static = re.sub('\d+$', '128', dhcp_ipv4_submask[0])
     conf_ipv4 = ipv4_static+"/" + dhcp_ipv4_submask[1]
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("ip static " + conf_ipv4)
     static_ip_config_check(sw1, conf_ipv4)
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("nameserver 10.10.10.4 10.10.10.20")
     output = sw1(" ")
+    sw1("end")
     cnt = 15
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         output += sw1("echo", shell="bash")
         if re.findall("Primary Nameserver\s+: 10.10.10.4", output) and \
@@ -1255,6 +1495,9 @@ def remove_ipv4_on_mgmt_intf_with_nameserver(sw1):
     assert '10.10.10.4' in output
     assert '10.10.10.5' not in output
     assert '10.10.10.20' in output
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     cmd_output = sw1("no ip static " + conf_ipv4)
     assert "Remove all IPv4 related info (Default gateway/DNS address)"
     " before removing the IP address from this interface" in cmd_output
@@ -1264,12 +1507,19 @@ def remove_ipv4_on_mgmt_intf_with_nameserver(sw1):
 def remove_ipv4_on_mgmt_intf_with_nameserver_ipv6(sw1):
     ipv4_static = re.sub('\d+$', '128', dhcp_ipv4_submask[0])
     conf_ipv4 = ipv4_static+"/" + dhcp_ipv4_submask[1]
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("ip static " + conf_ipv4)
     static_ip_config_check(sw1, conf_ipv4)
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("nameserver 2001:db8:0:1::128 10.10.10.30")
+    sw1("end")
     cnt = 15
     while cnt:
-        output_show = sw1("do show interface mgmt")
+        output_show = sw1("show interface mgmt")
         output_show += sw1(" ")
         if re.findall("Primary Nameserver\s+: 2001:db8:0:1::128",
            output_show) and re.findall("Secondary Nameserver\s+: "
@@ -1291,6 +1541,9 @@ def remove_ipv4_on_mgmt_intf_with_nameserver_ipv6(sw1):
     assert '2001:db8:0:1::128' in output
     assert '10.10.10.30' in output
 
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     cmd_output = sw1("no ip static " + conf_ipv4)
     assert "Remove all IPv4 related info (Default gateway/DNS address)"
     " before removing the IP address from this interface" in cmd_output
@@ -1298,40 +1551,64 @@ def remove_ipv4_on_mgmt_intf_with_nameserver_ipv6(sw1):
 
 # Verify to remove static IPv6. Mode should be changed to DHCP
 def remove_ipv6_on_mgmt_intf_static_mode(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("ip dhcp")
     sw1(" ")
     sleep(15)
     sw1("ip static 2001:db8:0:1::156/64")
     static_ip_config_check(sw1, "2001:db8:0:1::156/64")
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("no ip static 2001:db8:0:1::156/64")
     static_ip_unconfigure_check(sw1, "2001:db8:0:1::156/64")
-    show_output = sw1("do show interface mgmt")
+    sw1("end")
+    show_output = sw1("show interface mgmt")
     assert 'dhcp' in show_output
 
 
 # Verify to remove static Ipv6 with static Ipv4. Mode should not be changed
 def remove_ipv6_on_mgmt_intf_with_ipv4(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("ip static 2001:db8:0:1::156/64")
     static_ip_config_check(sw1, "2001:db8:0:1::156/64")
     ipv4_static = re.sub('\d+$', '128', dhcp_ipv4_submask[0])
     conf_ipv4 = ipv4_static+"/" + dhcp_ipv4_submask[1]
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("ip static " + conf_ipv4)
     static_ip_config_check(sw1, conf_ipv4)
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("no ip static 2001:db8:0:1::156/64")
     static_ip_unconfigure_check(sw1, "2001:db8:0:1::156/64")
-    show_output = sw1("do show interface mgmt")
+    sw1("end")
+    show_output = sw1("show interface mgmt")
     assert 'static' in show_output
 
 
 # Verify to remove Ipv6 with default gw. Should not be allowed
 def remove_ipv6_on_mgmt_intf_with_def_gw(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("ip static 2001:db8:0:1::156/64")
     static_ip_config_check(sw1, "2001:db8:0:1::156/64")
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("default-gateway 2001:db8:0:1::128")
     output = sw1(" ")
+    sw1("end")
     cnt = 30
     while cnt:
-        output = sw1("do show interface mgmt")
+        output = sw1("show interface mgmt")
         output += sw1("echo", shell="bash")
         output += sw1("echo", shell="bash")
         if '2001:db8:0:1::128' in output:
@@ -1340,6 +1617,9 @@ def remove_ipv6_on_mgmt_intf_with_def_gw(sw1):
             sleep(1)
             cnt -= 1
     assert '2001:db8:0:1::128' in output
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     cmd_output = sw1("no ip static 2001:db8:0:1::156/64")
     cmd_output += sw1(" ")
     assert "Remove all IPv6 related info (Default gateway/DNS address)"
@@ -1348,13 +1628,20 @@ def remove_ipv6_on_mgmt_intf_with_def_gw(sw1):
 
 # Verify to remove IPv6 with name server. Should not be allowed
 def remove_ipv6_on_mgmt_intf_with_nameserver(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("ip static 2001:db8:0:1::156/64")
     static_ip_config_check(sw1, "2001:db8:0:1::156/64")
     output = sw1(" ")
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     output = sw1("nameserver 2001:db8:0:1::150 2001:db8:0:1::156")
     cnt = 15
+    sw1("end")
     while cnt:
-        output_show = sw1("do show interface mgmt")
+        output_show = sw1("show interface mgmt")
         output_show += sw1(" ")
         if re.findall("Primary Nameserver\s+: 2001:db8:0:1::150",
            output_show) and re.findall("Secondary Nameserver\s+: 2001:"
@@ -1375,6 +1662,9 @@ def remove_ipv6_on_mgmt_intf_with_nameserver(sw1):
             cnt -= 1
     assert '2001:db8:0:1::156' in output
     assert '2001:db8:0:1::150' in output
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     cmd_output = sw1("no ip static 2001:db8:0:1::156/64")
     cmd_output += sw1(" ")
     assert "Remove all IPv6 related info (Default gateway/DNS address)"
@@ -1383,12 +1673,19 @@ def remove_ipv6_on_mgmt_intf_with_nameserver(sw1):
 
 # Verify to remove IPv6 with mixed name server. Should not be allowed
 def remove_ipv6_on_mgmt_intf_with_nameserver_ipv4(sw1):
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("ip static 2001:db8:0:1::156/64")
     static_ip_config_check(sw1, "2001:db8:0:1::156/64")
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     sw1("nameserver 10.10.10.20 2001:db8:0:1::130")
     cnt = 15
+    sw1("end")
     while cnt:
-        output_show = sw1("do show interface mgmt")
+        output_show = sw1("show interface mgmt")
         output_show += sw1(" ")
         if re.findall("Primary Nameserver\s+: 10.10.10.20",
            output_show) and re.findall("Secondary Nameserver\s+: 2001:"
@@ -1410,6 +1707,9 @@ def remove_ipv6_on_mgmt_intf_with_nameserver_ipv4(sw1):
     assert '10.10.10.20' in output
     assert '2001:db8:0:1::130' in output
 
+    sw1("end")
+    sw1("configure terminal")
+    sw1("interface mgmt")
     cmd_output = sw1("no ip static 2001:db8:0:1::156/64")
     assert "Remove all IPv6 related info (Default gateway/DNS address)"
     " before removing the IP address from this interface." in cmd_output
@@ -1437,6 +1737,9 @@ def config_set_hostname_from_cli(sw1):
             sleep(1)
     assert 'hostname=cli' in cmd_output and \
            hostname == 'cli' and 'cli' in output
+    sw1._shells['vtysh']._prompt = (
+        '(^|\n)cli(\\([\\-a-zA-Z0-9]*\\))?#'
+    )
 
 
 # Verify to unconfigure system hostname through CLI
@@ -1463,6 +1766,9 @@ def config_no_hostname_from_cli(sw1):
             sleep(1)
     assert 'hostname=switch' in cmd_output and \
            hostname == '""' and 'switch' in output
+    sw1._shells['vtysh']._prompt = (
+        '(^|\n)switch(\\([\\-a-zA-Z0-9]*\\))?#'
+    )
 
 
 # Verify to check system hostname defaults to switch
@@ -1511,6 +1817,9 @@ def set_hostname_by_dhclient(sw1):
     assert 'dhcp_hostname=dhcp-new' in cmd_output and \
            'hostname=dhcp-new' in cmd_output and \
            hostname == '""' and 'dhcp-new' in output
+    sw1._shells['vtysh']._prompt = (
+        '(^|\n)dhcp-new(\\([\\-a-zA-Z0-9]*\\))?#'
+    )
 
 
 # Verify to remove hostname through dhclient
@@ -1539,6 +1848,9 @@ def remove_dhcp_hostname_by_dhclient(sw1):
             sleep(1)
     assert 'dhcp_hostname=' not in cmd_output and \
            hostname == '""' and 'switch' in output
+    sw1._shells['vtysh']._prompt = (
+        '(^|\n)switch(\\([\\-a-zA-Z0-9]*\\))?#'
+    )
 
 
 # Verify to configure system domainname through CLI
@@ -1638,13 +1950,29 @@ def mgmt_intf_cleanup(sw1):
         sw1("ip netns exec swns ip address flush dev 1", shell="bash")
 
 
+@mark.gate
 def test_ct_mgmt_intf(topology, step):
 
     setup_net()
 
     sw1 = topology.get('sw1')
 
+    hsw1 = topology.get('h1')
+
     assert sw1 is not None
+
+    assert hsw1 is not None
+
+    hsw1("echo -e \"option domain-name-servers 10.10.10.4, 10.10.10.5;\n"
+         "option routers 172.17.0.1;\noption routers 172.17.0.1;\n"
+         "subnet 172.17.0.0 netmask 255.255.255.0 {\n"
+         "range 172.17.0.10 172.17.0.100;\n"
+         "option domain-name-servers 10.10.10.4, 10.10.10.5;\n}\" >> "
+         "/etc/dhcp/dhcpd.conf")
+
+    hsw1("ifconfig eth1 172.17.0.15 netmask 255.255.255.0")
+
+    hsw1("sudo service isc-dhcp-server start")
 
     # mgmt intf tests.
     step("\n########## Test to configure Management "

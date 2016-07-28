@@ -17,6 +17,7 @@ import os
 from time import sleep
 import re
 from pytest import raises
+from pytest import mark
 from topology_lib_vtysh.exceptions import UnknownVtyshException
 
 TOPOLOGY = """
@@ -476,6 +477,10 @@ def config_set_hostname_from_cli(sw1, step):
     step("### Successfully verified configuring"
          " hostname using CLI ###\n")
 
+    sw1._shells['vtysh']._prompt = (
+        '(^|\n)cli(\\([\\-a-zA-Z0-9]*\\))?#'
+    )
+
 
 # Verify to set hostname through dhclient
 def set_hostname_by_dhclient(sw1, step):
@@ -502,14 +507,17 @@ def set_hostname_by_dhclient(sw1, step):
     step("### Successfully verified to set system hostname"
          " by dhclient ###\n")
 
+    sw1._shells['vtysh']._prompt = (
+        '(^|\n)open-vswitch-new(\\([\\-a-zA-Z0-9]*\\))?#'
+    )
+
 
 # Verify to configure system domainname through CLI
 def config_set_domainname_from_cli(sw1, step):
-    # FIXME
 
-    #sw1._shells['vtysh']._prompt = (
-    #    '(^|\n)open-vswitch-new(\\([\\-a-zA-Z0-9]*\\))?#'
-    #)
+    sw1._shells['vtysh']._prompt = (
+        '(^|\n)cli(\\([\\-a-zA-Z0-9]*\\))?#'
+    )
 
     sw1("domain-name cli")
     sw1(" ")
@@ -555,13 +563,29 @@ def mgmt_intf_cleanup(sw1):
         sw1("ip netns exec swns ip address flush dev 1", shell="bash")
 
 
+@mark.gate
 def test_mgmt_intf(topology, step):
 
     setup_net()
 
     sw1 = topology.get('sw1')
 
+    hsw1 = topology.get('h1')
+
     assert sw1 is not None
+
+    assert hsw1 is not None
+
+    hsw1("echo -e \"option domain-name-servers 10.10.10.4, 10.10.10.5;\n"
+         "option routers 172.17.0.1;\noption routers 172.17.0.1;\n"
+         "subnet 172.17.0.0 netmask 255.255.255.0 {\n"
+         "range 172.17.0.10 172.17.0.100;\n"
+         "option domain-name-servers 10.10.10.4, 10.10.10.5;\n}\" >> "
+         "/etc/dhcp/dhcpd.conf")
+
+    hsw1("ifconfig eth1 172.17.0.15 netmask 255.255.255.0")
+
+    hsw1("sudo service isc-dhcp-server start")
 
     # mgmt intf tests.
     step("\n########## Test to configure Management "
