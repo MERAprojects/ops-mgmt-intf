@@ -17,8 +17,8 @@ import os
 from time import sleep
 import re
 from pytest import raises
-from pytest import mark
 from topology_lib_vtysh.exceptions import UnknownVtyshException
+from pytest import mark
 
 TOPOLOGY = """
 #               +-------+
